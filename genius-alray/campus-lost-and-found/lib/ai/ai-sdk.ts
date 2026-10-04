@@ -8,7 +8,7 @@ import { photoAdviceSchema } from "@/lib/validation/schemas"
 /**
  * Vercel AI SDK 实现。简化后整套 AI 能力只剩「拍照 → 名称 + 描述」，
  * 仍然只依赖一个视觉多模态模型。
- * 当前目标模型：StepFun step-5-preview（enable_vision_input=true, enable_reason=true）。
+ * 当前目标模型：DeepSeek-V4.1-Flash（`deepseek-flash`，input_modalities 含 image）。
  */
 export type AiSdkConfig = {
   baseUrl: string
@@ -17,7 +17,7 @@ export type AiSdkConfig = {
 }
 
 // providerOptions 的键必须是 camelCase（SDK 会把 name 转成 camelCase 并给出弃用警告）
-const PROVIDER_NAME = "stepfun"
+const PROVIDER_NAME = "deepseek"
 
 /**
  * step-5-preview 是**推理模型**，实测结论决定了下面的参数：
@@ -37,16 +37,24 @@ const MAX_OUTPUT_TOKENS = 16_000
  */
 const REQUEST_TIMEOUT_MS = 60_000
 
-const REQUEST_OPTIONS = {
-  maxOutputTokens: MAX_OUTPUT_TOKENS,
-  abortSignal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  providerOptions: {
-    [PROVIDER_NAME]: {
-      reasoningEffort: REASONING_EFFORT,
-      strictJsonSchema: true,
+/**
+ * 【必须每次请求现做】abortSignal 只能在**发起请求时**创建。
+ * 之前把它放进模块级常量里，等于在整个 Node 进程启动时创建了一个 60 秒后触发的信号：
+ * 服务跑过 60 秒之后，所有后续请求都会被同一个「已经 abort」的信号立刻打断 ——
+ * 表现就是「AI 识别只能用一次，之后每次都失败」。
+ */
+function requestOptions() {
+  return {
+    maxOutputTokens: MAX_OUTPUT_TOKENS,
+    abortSignal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    providerOptions: {
+      [PROVIDER_NAME]: {
+        reasoningEffort: REASONING_EFFORT,
+        strictJsonSchema: true,
+      },
     },
-  },
-} as const
+  }
+}
 
 const analysisSchema = z.object({
   title: z.string().min(1).max(60),
@@ -110,7 +118,7 @@ export function createAiSdkProviders(config: AiSdkConfig): AiProviders {
 
   const provider = createOpenAICompatible({
     name: PROVIDER_NAME,
-    baseURL: config.baseUrl || "https://api.stepfun.com/v1",
+    baseURL: config.baseUrl || "https://api.deepseek.com/v1",
     apiKey: config.apiKey,
     // 【关键】默认是 false。不开这个开关，provider 不会发 response_format: json_schema，
     // generateObject 会退化成「靠提示词求 JSON」—— 实测模型会返回裸对象、空对象等非法形状。
@@ -147,7 +155,7 @@ export function createAiSdkProviders(config: AiSdkConfig): AiProviders {
               ],
             },
           ],
-          ...REQUEST_OPTIONS,
+          ...requestOptions(),
         })
 
         return {
@@ -182,7 +190,7 @@ export function createAiSdkProviders(config: AiSdkConfig): AiProviders {
               ],
             },
           ],
-          ...REQUEST_OPTIONS,
+          ...requestOptions(),
         })
 
         return {
