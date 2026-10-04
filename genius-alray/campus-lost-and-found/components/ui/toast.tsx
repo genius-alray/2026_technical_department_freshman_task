@@ -29,7 +29,10 @@ function ToastViewport({ className, ...props }: ToastPrimitive.Viewport.Props) {
     <ToastPrimitive.Viewport
       data-slot="toast-viewport"
       className={cn(
-        "pointer-events-none fixed inset-x-4 bottom-4 z-50 mx-auto w-auto max-w-sm outline-none sm:right-4 sm:left-auto sm:mx-0 sm:w-full",
+        // 本项目唯一对 shadcn 组件做的偏移调整（其余实现与动效保持 registry 原样）：
+        // 底部主按钮（发布 / 下一步 / 确认认领）都在屏幕最下沿，"bottom-4" 的 toast
+        // 会正好压住它、并把点击吞掉（实测截图确认）。抬高到 bottom-20 清开按钮区。
+        "pointer-events-none fixed inset-x-4 bottom-20 z-50 mx-auto w-auto max-w-sm outline-none sm:right-4 sm:left-auto sm:mx-0 sm:w-full",
         className
       )}
       {...props}

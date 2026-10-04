@@ -86,6 +86,8 @@ PageTransition // 已由 app/template.tsx 全局挂好，页面里不要再用
 - 位移 ≤ 24px，缩放 ≥ 0.95。不要做旋转、弹跳。
 - **无限循环只有一个例外**：`LoadingOverlay` / 加载指示器必须持续运动，否则用户会以为卡死。
   其它任何地方禁止 `repeat: Infinity`。
+- **toast 从 `bottom-4` 抬到 `bottom-20`**：底部主按钮（发布 / 下一步 / 确认认领）都在屏幕最下沿，
+  默认位置会正好压住它并吞掉点击。这是全项目唯一对 shadcn 组件做的偏移调整。
 - 卡片这类 Server Component 优先用 CSS：`active:scale-[0.98]`、`transition-shadow`，不要为了动效把组件变成客户端组件。
 - 无障碍已由 `MotionProvider`（`reducedMotion="user"`）统一处理，不需要在业务代码里判断 `useReducedMotion`。
 - 动效不得影响可测试性：元素必须始终存在于 DOM 里（用 opacity/transform，不要用 `display:none` 做入场）。
@@ -116,20 +118,24 @@ PageTransition // 已由 app/template.tsx 全局挂好，页面里不要再用
 
 ## 7. 视觉留档
 
-`docs/screenshots/` 是 Pixel 7 视口下的实拍（本地 mock AI，数据由 Playwright 现造现删）：
+`docs/screenshots/` 是 Pixel 7 视口下的实拍（第 4 轮重拍；本地 mock AI，数据由 Playwright 现造现删）：
 
-| 文件                              | 画面                                        |
-| --------------------------------- | ------------------------------------------- |
-| `01-home-empty.png`               | 首页空态：标题 + 右上角「我的」+ 唯一主按钮 |
-| `03-publish-step1-photos.png`     | 第 1 屏拍照（已拍 2 张，步骤指示在第 1 步） |
-| `04-publish-step2-recognized.png` | 第 2 屏确认信息（自动识别完成）             |
-| `05-publish-step3-custody.png`    | 第 3 屏怎么还                               |
-| `07-publish-success.png`          | 发布成功整屏对勾                            |
-| `08-home-wall.png`                | 失物墙双列瀑布流                            |
-| `09-item-detail-owner.png`        | 详情页（拾主视角）                          |
-| `10-me-published.png`             | 「我的发布」标签                            |
-| `11-pickup-form.png`              | 实名领取表单                                |
-| `12-pickup-revealed.png`          | 领取后揭晓联系方式                          |
-| `13-me-pickups.png`               | 「我的领取」标签                            |
+| 文件                             | 画面                                                    |
+| -------------------------------- | ------------------------------------------------------- |
+| `01-home-empty.png`              | 首页空态：标题 + 右上角「我的」+ 唯一主按钮（内容居中） |
+| `03-publish-step1-retake.png`    | 第 1 屏：1 张照片 → AI 建议「建议补拍」                 |
+| `04-publish-step1-advice-ok.png` | 第 1 屏：2 张照片 → AI 判断「可以直接用」               |
+| `05-publish-step2-loading.png`   | 第 2 屏：**全屏加载**（此时 DOM 里没有任何输入框）      |
+| `06-publish-step2-form.png`      | 第 2 屏：加载结束后的可编辑表单                         |
+| `08-publish-success.png`         | 发布成功整屏对勾                                        |
+| `09-home-wall.png`               | 失物墙双列瀑布流                                        |
+| `10-item-detail-owner.png`       | 详情页（拾主视角）                                      |
+| `11-me-published.png`            | 「我的发布」标签（未认领时才有「撤单」）                |
+| `13-claim-screen.png`            | **认领独立一屏**：只填姓名与手机号，内容居中            |
+| `14-claim-success.png`           | 认领成功整屏对勾                                        |
+| `15-claim-revealed.png`          | 认领后回到详情页，揭晓拾主的联系方式                    |
+| `16-home-wall-claimed.png`       | 已认领物品**仍留在墙上**，卡片带「已认领」角标          |
+| `17-me-claims.png`               | 「我的认领」标签                                        |
 
-重新生成：`AI_PROVIDER=mock PORT=3100 pnpm dev`，再用 Playwright 走一遍发布 → 浏览 → 领取。
+重新生成：`AI_PROVIDER=mock MOCK_AI_DELAY_MS=800 PORT=3100 pnpm dev`，再用 Playwright 走一遍发布 → 浏览 → 认领 → 撤单。
+（`MOCK_AI_DELAY_MS` 是 mock 的确定性延时，否则「全屏加载」这种瞬时状态截不到图。）
