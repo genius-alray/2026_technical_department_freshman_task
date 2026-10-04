@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { motion } from "motion/react"
 import { ImageIcon } from "lucide-react"
 
+import { SkeletonImage } from "@/components/media/skeleton-image"
 import { DURATION, EASE_OUT } from "@/components/motion/primitives"
 
 /**
@@ -68,15 +69,17 @@ export function ItemGallery({
         aria-label="物品照片"
         className="flex w-full snap-x snap-mandatory [scrollbar-width:none] overflow-x-auto overscroll-x-contain scroll-smooth rounded-2xl bg-muted ring-1 ring-foreground/10 [&::-webkit-scrollbar]:hidden"
       >
-        {images.map((image) =>
+        {images.map((image, imageIndex) =>
           image.url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+            <SkeletonImage
               key={image.path}
               src={image.url}
               alt={title}
-              draggable={false}
-              className="aspect-square w-full shrink-0 snap-center object-cover select-none"
+              fill
+              eager={imageIndex === 0}
+              aspectClassName="aspect-square"
+              className="w-full shrink-0 snap-center"
+              testId={"gallery-image-" + imageIndex}
             />
           ) : (
             <div

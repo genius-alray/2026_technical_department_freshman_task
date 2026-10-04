@@ -7,6 +7,7 @@ import { AnimatePresence, motion } from "motion/react"
 import { ChevronLeftIcon, UserRoundIcon } from "lucide-react"
 
 import { DURATION, EASE_OUT } from "@/components/motion/primitives"
+import { InstallAppButton } from "@/components/pwa/install-prompt"
 import { cn } from "@/lib/utils"
 
 /**
@@ -214,15 +215,19 @@ export function TitleBarProvider({ children }: { children: React.ReactNode }) {
         </div>
 
         {config.showMe ? (
-          <Link
-            href="/me"
-            aria-label="我的"
-            data-testid="me-entry"
-            title="我的"
-            className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-foreground transition-colors hover:bg-accent active:scale-95"
-          >
-            <UserRoundIcon className="size-5" aria-hidden />
-          </Link>
+          <div className="flex shrink-0 items-center gap-2">
+            {/* 能装且还没装时才渲染；装到桌面后自己消失 */}
+            <InstallAppButton />
+            <Link
+              href="/me"
+              aria-label="我的"
+              data-testid="me-entry"
+              title="我的"
+              className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-foreground transition-colors hover:bg-accent active:scale-95"
+            >
+              <UserRoundIcon className="size-5" aria-hidden />
+            </Link>
+          </div>
         ) : null}
       </header>
       {children}

@@ -9,6 +9,7 @@ import type { ListedItem } from "@/lib/types"
 
 import { loadMoreItemsAction } from "./actions"
 import { ItemCard } from "./item-card"
+import { ItemWallSkeletonCard } from "./item-wall-skeleton"
 
 /**
  * 双列瀑布流 + 客户端分页。
@@ -65,6 +66,16 @@ export function ItemWall({
               </div>
             )
           )}
+          {/* 翻页期间先占两张的位置：按钮的「加载中…」不足以说明瀑布流在长 */}
+          {pending
+            ? Array.from({ length: 2 }, (_, index) => (
+                <ItemWallSkeletonCard
+                  key={"pending-" + index}
+                  index={index + 1}
+                  testId="wall-loading-more"
+                />
+              ))
+            : null}
         </StaggerList>
       </div>
 

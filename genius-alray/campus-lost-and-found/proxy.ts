@@ -7,7 +7,17 @@ import { NextResponse, type NextRequest } from "next/server"
 // 只有登录/注册页会把已登录用户弹回首页
 const AUTH_PATHS = ["/login", "/signup"]
 // 未登录也能访问（首屏信息流可以看，但详情页会要求登录）
-const PUBLIC_PATHS = ["/", "/terms", "/privacy"]
+// PWA 三件套必须无条件可达：离线页 / Service Worker / 清单。
+// 少了这一条，未登录访客请求 /manifest.webmanifest 会被 307 到 /login，
+// 而 Service Worker 会把「登录页」当成离线页缓存下来 —— 装到桌面后断网就废了。
+const PUBLIC_PATHS = [
+  "/",
+  "/terms",
+  "/privacy",
+  "/offline",
+  "/sw.js",
+  "/manifest.webmanifest",
+]
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request })
@@ -70,6 +80,7 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    // 静态资源与 PWA 三件套不进 proxy：省一次 auth 往返，也不会被乐观跳转改写
+    "/((?!_next/static|_next/image|favicon.ico|sw.js|manifest.webmanifest|offline|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 }

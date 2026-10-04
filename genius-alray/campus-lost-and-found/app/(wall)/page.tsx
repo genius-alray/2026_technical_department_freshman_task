@@ -18,7 +18,7 @@ import {
 import { createSignedUrlMap } from "@/lib/storage/signed"
 import { createClient, getCurrentUser } from "@/lib/supabase/server"
 
-import { ItemWall } from "./items/item-wall"
+import { ItemWall } from "../items/item-wall"
 
 export const metadata: Metadata = {
   title: "失物墙 · 校园失物招领",
@@ -27,6 +27,11 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic"
 
+/**
+ * 放在 `(wall)` 路由组里，只为把首屏骨架（同目录的 loading.tsx）**限制在 "/"**：
+ * 根目录的 app/loading.tsx 会包住所有子路由（含 not-found），
+ * 页面里再抛 notFound() 时状态码已经发出去了，404 会变成 200。
+ */
 export default async function HomePage() {
   // 【第 7 轮】未登录也能刷信息流；点进详情才要求登录
   const user = await getCurrentUser()

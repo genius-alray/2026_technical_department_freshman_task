@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { ImageIcon } from "lucide-react"
 
+import { SkeletonImage } from "@/components/media/skeleton-image"
 import { ITEM_STATUS_LABEL, type ListedItem } from "@/lib/types"
 
 import { formatDateTime } from "./format"
@@ -33,12 +34,12 @@ export function ItemCard({
     >
       <div className="relative w-full overflow-hidden bg-muted">
         {cover?.url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          // 加载中撑出占位比例 + 骨架，失败换成图标，绝不露破图与 alt 文本
+          <SkeletonImage
             src={cover.url}
             alt={item.title}
-            loading="lazy"
-            className="h-auto w-full object-cover"
+            aspectClassName="aspect-[4/3]"
+            testId="item-cover"
           />
         ) : (
           <div className="flex aspect-[4/3] w-full items-center justify-center text-muted-foreground">

@@ -144,6 +144,8 @@
   }
   html {
     @apply font-sans;
+    /* 根画布也跟随主题：硬跳转/回弹时露出的是主题色，而不是浏览器的白底 */
+    @apply bg-background;
     -webkit-tap-highlight-color: transparent;
   }
 }

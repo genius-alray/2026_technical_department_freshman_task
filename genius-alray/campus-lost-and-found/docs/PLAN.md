@@ -20,6 +20,9 @@
 | 8    | 发布流程精简（去步骤条、上限 3 张、「添加照片」卡片、领取方式卡片化）；危险操作 danger + 二次确认；AI 切 DeepSeek 并修正结构化输出 |
 | 9    | 认领确认后**立刻跳**认领信息；首页标题「失物招领墙」；登录/注册页「随便看看」；「领错了？」文案；测试与文档收敛（16 → 10 个 e2e spec、4 份文档压成当前版） |
 | 10   | 位置组件固定显示「查看定位」（**不再露出经纬度**）；发布「位置详情」改为必填，zod + RPC 双侧校验 |
+| 11   | **PWA**：`app/manifest.ts` + 图标（192/512/maskable）+ Service Worker 离线页；高德链接改为手机端可接管的 `uri.amap.com`（`callnative=1`）并同标签跳转 |
+| 12   | PWA 收尾：路由切换时顶部状态栏不再闪白（镜像 theme-color、兜底色改品牌色）；「查看定位」改为**一步唤起高德 App**（scheme / intent + 网页版兜底） |
+| 13   | 体验补强：**拦截浏览器安装提示** + 首页头像旁「安装应用」按钮；失物墙首屏骨架（限定在 `(wall)` 路由组）；瀑布流与详情页图片统一三态（骨架 / 淡入 / 失败占位，不再露破图） |
 
 安全模型的一处关键改判：早先要求「禁止获取全部物品列表」，现改为**公开的失物墙**，
 防护重心从「行级不可见」转为「**列级保密**」（`contact` / `location_*` 列级 REVOKE），见 REQUIREMENTS 第 4 节。
@@ -38,7 +41,7 @@
 
     app/
       (auth)/login, signup          手机号登录 / 注册（姓名 + 手机号 + 同意条款）
-      page.tsx                      失物墙（公开双列瀑布流）
+      (wall)/page.tsx, loading.tsx  失物墙（公开双列瀑布流 + 首屏骨架；骨架限定在这一组，见 VERIFICATION §4.11）
       publish/                      发布招领（四屏：拍照 → 确认信息 → 怎么还 → 详细设置）
       items/[id]/                   物品详情（相册轮播 + 认领入口）
       items/[id]/claim/             认领信息（指引 + 拾主联系方式/位置）
@@ -46,6 +49,11 @@
       me/profile/                   我的信息（真实姓名 + 手机号）
       me/items/[id]/pickups/        拾主查看认领人名单
       api/upload/route.ts           唯一 REST endpoint
+      manifest.ts                   PWA 清单（Next 约定文件 → /manifest.webmanifest）
+      offline/                      离线回退页（Service Worker 预缓存，免登录可达）
+    public/
+      sw.js                         Service Worker（只在生产构建里注册）
+      icons/                        图标：icon.svg 源文件 + 192/512/maskable PNG
     lib/
       types.ts                      类型与 AI 接口（Lead 冻结）
       validation/schemas.ts         zod schema
@@ -56,7 +64,11 @@
       supabase/{client,server,admin}.ts
     components/
       motion/{primitives,motion-provider}.tsx   动效统一出口（只准用，不准各自写）
-      nav/title-bar.tsx                         全站唯一的标题栏（含首页右上角「我的」入口）
+      nav/title-bar.tsx                         全站唯一的标题栏（含「安装应用」与首页右上角「我的」入口）
+      media/skeleton-image.tsx                  带骨架屏的图片（全站图片统一用它）
+      pwa/service-worker-register.tsx           注册 Service Worker（仅生产构建）
+      pwa/status-bar-keeper.tsx                 镜像状态栏 meta，防止路由切换时闪白
+      pwa/install-prompt.tsx                    拦截浏览器安装提示 + 首页「安装应用」按钮
       ui/**                                     shadcn 组件
     supabase/migrations/            5 个迁移（extensions / core / rls_and_grants / rpcs / storage）
     tests/{unit,rls,e2e,live,helpers}/
@@ -96,7 +108,7 @@
 | ----------- | ---------------- | ------------------------------------------------------------------------ |
 | 单元 + 组件 | `pnpm test:unit` | mock 确定性、zod schema、错误码映射、源码纪律                            |
 | 安全矩阵    | `pnpm test:rls`  | 列级保密、写权限只走 RPC、认领可见性与多人认领、发布校验（13 条见 VERIFICATION §2） |
-| E2E         | `pnpm test:e2e`  | 10 个按功能划分的 spec：发布向导 / 认领 / 多人认领 / 撤单与撤回 / 我的 / 列级隐私 / 失物墙 / 相册 / reduced-motion / 标题栏 |
+| E2E         | `pnpm test:e2e`  | 12 个按功能划分的 spec：发布向导 / 认领 / 多人认领 / 撤单与撤回 / 我的 / 列级隐私 / 失物墙 / 相册 / reduced-motion / 标题栏 / PWA 外壳 / 骨架屏 |
 | 真机 AI     | `pnpm test:live` | DeepSeek `deepseek-flash` 的拍照识别可用（默认跳过，需 AI_PROVIDER=ai-sdk） |
 | 全量        | `pnpm verify`    | 以上除 live 之外的全部                                                   |
 
@@ -153,6 +165,27 @@
 - `pnpm test:live` 通过（真实 DeepSeek 模型）。
 - 独立验证 agent 报告无阻塞项，且明确区分产品缺陷与测试自身缺陷。
 - 人类以真实照片完整走查一遍发布 → 浏览 → 认领 → 撤单。
+
+第 13 轮追加（安装提示 / 骨架屏）：
+
+- 浏览器自己的安装提示被 `beforeinstallprompt.preventDefault()` 拦掉，改由首页标题栏（头像旁）的
+  「安装应用」按钮触发；装完按钮消失，iOS 上（没有安装事件）改成「分享 → 添加到主屏幕」指引。
+- 失物墙首屏有双列骨架（服务端流式的第一段 HTML，覆盖首次进入 / 刷新 / 桌面图标启动）；
+  瀑布流与详情页图片统一走 `SkeletonImage`：加载中骨架、加载完淡入、失败换成图标 + 一句话，
+  **任何状态都不出现浏览器破图与 alt 文本**。
+- 骨架的 `loading.tsx` 必须挂在 `(wall)` 路由组里：放根目录会包住所有子路由，
+  详情页的 `notFound()` 会因流式响应已发出 200 而退化成 200（E2E 抓到过，见 VERIFICATION §4.11）。
+
+第 11–12 轮追加（PWA / 手机端）：
+
+- 生产构建下 `/manifest.webmanifest`、`/sw.js`、`/offline`、`/icons/*.png` 全部 200，
+  且 `/offline` 在**未登录**时不会被重定向到 `/login`（否则 Service Worker 会把登录页缓存成离线页）。
+- 手机端「查看定位」**一步**进高德 App：iOS 走 `iosamap://`，安卓 Chromium 走 `intent://`
+  （没装 App 由 Chrome 按 `S.browser_fallback_url` 回落网页版），其他安卓浏览器走 `androidamap://`；
+  桌面端与微信/QQ 内嵌浏览器仍打开高德网页版（`uri.amap.com`，带 `callnative=1`）。
+- 客户端路由切换时顶部状态栏不再闪白：`StatusBarKeeper` 镜像状态栏 meta，
+  manifest 的兜底色改用品牌色（见 `docs/VERIFICATION.md` §4.9）。
+- Service Worker **只在生产构建注册**：`pnpm dev`（含 E2E）不注册，避免缓存把 HMR 与测试结果搅浑。
 
 第 2 轮追加：
 

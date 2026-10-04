@@ -197,10 +197,11 @@ test.describe("认领流程", () => {
       await expect(page.getByTestId("map-open-dialog")).toContainText(
         locationLabel
       )
-      // 确认后用高德打开（只有位置描述时走搜索 URL）
+      // 确认后用高德打开（只有位置描述时走搜索 URL）；
+      // callnative=1 是手机端能被高德 App 接管的关键参数，必须带上
       await expect(page.getByTestId("map-open-confirm")).toHaveAttribute(
         "href",
-        /amap\.com/
+        /^https:\/\/uri\.amap\.com\/search\?keyword=.+&callnative=1&src=campus-lost-found$/
       )
       await page.getByTestId("map-open-cancel").click()
       await expect(page.getByTestId("map-open-dialog")).toHaveCount(0, {

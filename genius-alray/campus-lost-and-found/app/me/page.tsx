@@ -3,6 +3,7 @@ import Link from "next/link"
 import { redirect } from "next/navigation"
 import { ChevronRightIcon, ImageIcon, InboxIcon, UsersIcon } from "lucide-react"
 
+import { SkeletonImage } from "@/components/media/skeleton-image"
 import { PageTitle } from "@/components/nav/title-bar"
 import { SignOutButton } from "./sign-out-button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -166,11 +167,13 @@ function MyItemCard({ item }: { item: ListedItem }) {
           >
             <div className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted">
               {cover ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
+                <SkeletonImage
                   src={cover}
                   alt={item.title}
-                  className="size-full object-cover"
+                  fill
+                  aspectClassName=""
+                  className="size-full"
+                  errorText={null}
                 />
               ) : (
                 <ImageIcon
