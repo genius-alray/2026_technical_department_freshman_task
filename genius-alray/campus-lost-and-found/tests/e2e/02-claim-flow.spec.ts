@@ -182,19 +182,21 @@ test.describe("认领流程", () => {
         new RegExp("/items/" + inPlaceItem.id + "/claim$"),
         { timeout: T }
       )
-      await expect(page.getByTestId("reveal-location")).toContainText(
-        locationLabel,
-        { timeout: T }
-      )
+      // 不显示经纬度、也不把详情铺在按钮上：控件固定显示「查看定位」
+      const reveal = page.getByTestId("reveal-location")
+      const locationLink = reveal.getByTestId("location-link")
+      await expect(locationLink).toHaveText("查看定位", { timeout: T })
+      await expect(reveal).not.toContainText(locationLabel)
       await expect(page.getByTestId("reveal-contact")).toHaveCount(0)
 
-      await page
-        .getByTestId("reveal-location")
-        .getByTestId("location-link")
-        .click()
+      // 位置详情在二次确认框里
+      await locationLink.click()
       await expect(page.getByTestId("map-open-dialog")).toBeVisible({
         timeout: T,
       })
+      await expect(page.getByTestId("map-open-dialog")).toContainText(
+        locationLabel
+      )
       // 确认后用高德打开（只有位置描述时走搜索 URL）
       await expect(page.getByTestId("map-open-confirm")).toHaveAttribute(
         "href",

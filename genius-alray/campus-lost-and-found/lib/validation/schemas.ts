@@ -69,12 +69,12 @@ export const publishItemSchema = z
       }
       return
     }
-    const hasCoords = typeof v.lat === "number" && typeof v.lng === "number"
-    if (!hasCoords && v.locationLabel.length < 1) {
+    // 位置详情必填：只有坐标的话失主还是不知道东西在哪，而且经纬度不该展示给用户
+    if (v.locationLabel.length < 1) {
       ctx.addIssue({
         code: "custom",
         path: ["locationLabel"],
-        message: "请允许定位或填写位置描述",
+        message: "请填写位置详情",
       })
     }
   })

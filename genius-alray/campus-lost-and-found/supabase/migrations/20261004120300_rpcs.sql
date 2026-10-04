@@ -74,8 +74,10 @@ begin
       raise exception '代为保管需要填写联系方式（至少 5 个字符）' using errcode = '22023';
     end if;
   elsif p_custody = 'in_place' then
-    if p_location_lat is null and v_label is null then
-      raise exception '请允许定位或填写位置描述' using errcode = '22023';
+    -- 位置详情必填：只有坐标时失主还是不知道东西在哪（而且经纬度不该展示给用户），
+    -- 坐标只是用来生成地图链接的补充信息。
+    if v_label is null then
+      raise exception '指定存放位置需要填写位置详情' using errcode = '22023';
     end if;
   else
     raise exception '保管方式不合法' using errcode = '22023';

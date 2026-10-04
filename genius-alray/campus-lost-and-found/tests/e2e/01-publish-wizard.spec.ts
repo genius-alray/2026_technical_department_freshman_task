@@ -6,6 +6,7 @@ import {
   newTestContext,
   phoneFor,
   photoGrid,
+  signInViaUi,
   signUpViaUi,
   uniqueSeed,
   uploadPhoto,
@@ -213,7 +214,7 @@ test.describe("发布向导", () => {
     expect(new URL(page.url()).pathname).toBe("/publish")
   })
 
-  test("指定存放位置：拿不到坐标时用位置描述也能发布", async ({ page }) => {
+  test("指定存放位置：位置详情必填，定位失败也能靠它发布", async ({ page }) => {
     const editedTitle = "E2E 留原地 " + Math.random().toString(36).slice(2, 6)
     const locationLabel = "图书馆 3 楼自习区靠窗第三排"
 
@@ -233,8 +234,14 @@ test.describe("发布向导", () => {
     })
     await page.getByTestId("custody-in-place").click()
 
-    // headless 没有定位权限：定位失败后必须能靠位置描述发布
+    // 位置详情是必填：留空点「发布」会被拦下，人还留在这一屏
+    await expect(page.getByLabel("位置详情")).toBeVisible({ timeout: T })
     await expect(page.locator("#locationLabel")).toBeVisible({ timeout: T })
+    await page.getByRole("button", { name: "发布", exact: true }).click()
+    await expect(page.getByText("请填写位置详情")).toBeVisible({ timeout: T })
+    expect(new URL(page.url()).pathname).toBe("/publish")
+
+    // headless 拿不到定位：填了位置详情就能发布
     await page.locator("#locationLabel").fill(locationLabel)
     await page.getByRole("button", { name: "发布", exact: true }).click()
 
@@ -251,6 +258,69 @@ test.describe("发布向导", () => {
     expect(row.error).toBeNull()
     expect(row.data?.custody).toBe("in_place")
     expect(row.data?.location_label).toBe(locationLabel)
+    expect(row.data?.location_lat).toBeNull()
     expect(row.data?.status).toBe("published")
+  })
+
+  test("指定存放位置：定位成功也只说「已获取定位」，界面上不出现经纬度", async ({
+    browser,
+  }) => {
+    const editedTitle = "E2E 定位 " + Math.random().toString(36).slice(2, 6)
+    const locationLabel = "图书馆 3 楼自习区"
+    const lat = 31.230416
+    const lng = 121.473701
+
+    // 复用 beforeEach 已注册的账号，只换一个「有定位权限」的上下文
+    const context = await browser.newContext({
+      geolocation: { latitude: lat, longitude: lng },
+      permissions: ["geolocation"],
+    })
+
+    try {
+      const page = await context.newPage()
+      await signInViaUi(page, phoneFor(seed))
+
+      await page.goto("/publish")
+      await uploadPhotos(page, 2)
+      await page.getByRole("button", { name: "下一步" }).click()
+      await expect(page.locator("#title")).toBeVisible({ timeout: 60_000 })
+      await expect(page.locator("#title")).not.toHaveValue("", {
+        timeout: 60_000,
+      })
+      await page.locator("#title").fill(editedTitle)
+      await page.getByRole("button", { name: "下一步" }).click()
+
+      await expect(page.getByTestId("custody-in-place")).toBeVisible({
+        timeout: T,
+      })
+      await page.getByTestId("custody-in-place").click()
+
+      // 定位成功：提示只说拿到了定位，屏幕上没有任何坐标数字
+      await expect(page.getByText("已获取定位")).toBeVisible({ timeout: T })
+      await page.locator("#locationLabel").fill(locationLabel)
+      const body = await page.locator("body").innerText()
+      expect(body).not.toContain(String(lat))
+      expect(body).not.toContain(String(lng))
+
+      await page.getByRole("button", { name: "发布", exact: true }).click()
+      await expect(page.getByTestId("publish-success")).toBeVisible({
+        timeout: T,
+      })
+      await page.waitForURL(/\/$/, { timeout: T })
+
+      const row = await ctx.admin
+        .from("found_items")
+        .select("id, custody, location_label, location_lat, location_lng")
+        .eq("title", editedTitle)
+        .single()
+      expect(row.error).toBeNull()
+      expect(row.data?.custody).toBe("in_place")
+      expect(row.data?.location_label).toBe(locationLabel)
+      // 坐标仍然入库（只用来生成地图链接，不落成用户可见文案）
+      expect(row.data?.location_lat).toBeCloseTo(lat, 4)
+      expect(row.data?.location_lng).toBeCloseTo(lng, 4)
+    } finally {
+      await context.close()
+    }
   })
 })

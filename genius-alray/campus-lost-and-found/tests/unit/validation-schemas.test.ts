@@ -50,7 +50,7 @@ describe("publishItemSchema：联系方式与位置分支", () => {
     ).toBe(true)
   })
 
-  it("留在原地：无坐标且无位置描述必须失败（path=locationLabel）", () => {
+  it("留在原地：位置详情为空必须失败（path=locationLabel）", () => {
     const result = publishItemSchema.safeParse(
       publishInput({
         custody: "in_place",
@@ -63,17 +63,18 @@ describe("publishItemSchema：联系方式与位置分支", () => {
     expect(issuePaths(result)).toContain("locationLabel")
   })
 
-  it("留在原地：有位置描述或坐标即可通过", () => {
+  it("留在原地：位置详情必填，只有坐标不算填了", () => {
     expect(
       publishItemSchema.safeParse(
         publishInput({ custody: "in_place", locationLabel: "图书馆 3 楼" })
       ).success
     ).toBe(true)
-    expect(
-      publishItemSchema.safeParse(
-        publishInput({ custody: "in_place", lat: 31.23, lng: 121.47 })
-      ).success
-    ).toBe(true)
+
+    const onlyCoords = publishItemSchema.safeParse(
+      publishInput({ custody: "in_place", lat: 31.23, lng: 121.47 })
+    )
+    expect(onlyCoords.success).toBe(false)
+    expect(issuePaths(onlyCoords)).toContain("locationLabel")
   })
 
   it("照片数量 1-5：0 张与 6 张失败，1 张与 5 张通过", () => {

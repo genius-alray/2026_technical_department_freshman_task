@@ -470,12 +470,9 @@ export function PublishClient({ maxPhotos, defaultContact }: Props) {
         })
         return
       }
-      if (
-        custody === "in_place" &&
-        !coords &&
-        locationLabel.trim().length < 1
-      ) {
-        toast.add({ type: "error", title: "请允许定位或填写位置描述" })
+      // 位置详情必填：定位只是补充，失主最终要靠这句话找到东西
+      if (custody === "in_place" && locationLabel.trim().length < 1) {
+        toast.add({ type: "error", title: "请填写位置详情" })
         return
       }
 
@@ -740,13 +737,16 @@ export function PublishClient({ maxPhotos, defaultContact }: Props) {
                 </Button>
                 <p className="text-xs text-muted-foreground">
                   {coords
-                    ? `已获取坐标：${coords.lat}, ${coords.lng}`
-                    : "未获取到坐标，请填写位置描述"}
+                    ? "已获取定位，可以少写一点"
+                    : "没拿到定位，写清位置详情也能发布"}
                 </p>
+                {/* 位置详情必填：不显示经纬度，只让用户写一句人话 */}
+                <Label htmlFor="locationLabel">位置详情</Label>
                 <Input
                   id="locationLabel"
                   value={locationLabel}
                   maxLength={200}
+                  required
                   placeholder="例如：图书馆 3 楼自习区靠窗第三排"
                   onChange={(event) => setLocationLabel(event.target.value)}
                 />

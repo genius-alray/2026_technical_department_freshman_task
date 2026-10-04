@@ -15,7 +15,7 @@ import {
  * 安全矩阵 9：publish_found_item 的服务端校验
  * - 路径必须属于调用者（前缀 = 自己的 uid）
  * - 照片数量 1..max_photos
- * - kept 必须有联系方式；in_place 必须有坐标或位置描述
+ * - kept 必须有联系方式；in_place 必须有位置详情（坐标只是补充）
  * - 名称/描述长度
  */
 describe("矩阵 9：发布 RPC 的校验", () => {
@@ -114,14 +114,27 @@ describe("矩阵 9：发布 RPC 的校验", () => {
     expect(tooShort.error?.code).toBe("22023")
   })
 
-  it("矩阵 9：in_place 无坐标且无位置描述 → 22023", async () => {
-    const result = await publishItemRaw(owner, {
+  it("矩阵 9：in_place 没有位置详情 → 22023（无坐标、只有坐标都拒）", async () => {
+    const noLocation = await publishItemRaw(owner, {
       title: "没有位置",
       description: DEFAULT_DESCRIPTION,
       custody: "in_place",
       paths: [owner.id + "/c.jpg"],
     })
-    expect(result.error?.code).toBe("22023")
+    expect(noLocation.error?.code).toBe("22023")
+    expect(noLocation.error?.message).toContain("位置详情")
+
+    // 只有坐标不算填了位置详情：用户看不到「在哪」，也不该看到经纬度
+    const onlyCoords = await publishItemRaw(owner, {
+      title: "只有坐标",
+      description: DEFAULT_DESCRIPTION,
+      custody: "in_place",
+      lat: 31.230416,
+      lng: 121.473701,
+      paths: [owner.id + "/c2.jpg"],
+    })
+    expect(onlyCoords.error?.code).toBe("22023")
+    expect(onlyCoords.data).toBeNull()
   })
 
   it("矩阵 9：名称/描述长度非法 → 22023", async () => {
@@ -183,10 +196,10 @@ describe("矩阵 9：发布 RPC 的校验", () => {
     expect(images.data?.map((row) => row.storage_path)).toEqual(paths)
   })
 
-  it("矩阵 9：in_place 只填位置描述、或只给坐标，都可以发布", async () => {
+  it("矩阵 9：in_place 填了位置详情即可发布（坐标可选、联系方式不落库）", async () => {
     const byLabel = await publishItem(owner, {
       custody: "in_place",
-      title: "只填位置描述",
+      title: "填了位置详情",
       locationLabel: "图书馆 3 楼自习区",
     })
     const labelSecret = await ctx.admin
@@ -198,18 +211,20 @@ describe("矩阵 9：发布 RPC 的校验", () => {
     expect(labelSecret.data?.location_label).toBe("图书馆 3 楼自习区")
     expect(labelSecret.data?.location_lat).toBeNull()
 
-    const byCoords = await publishItem(owner, {
+    const withCoords = await publishItem(owner, {
       custody: "in_place",
-      title: "只给坐标",
+      title: "位置详情 + 坐标",
+      locationLabel: "图书馆 3 楼自习区",
       lat: 31.230416,
       lng: 121.473701,
     })
     const coordSecret = await ctx.admin
       .from("found_items")
       .select("contact, location_lat, location_lng, location_label")
-      .eq("id", byCoords.id)
+      .eq("id", withCoords.id)
       .single()
     expect(coordSecret.data?.contact).toBeNull()
+    expect(coordSecret.data?.location_label).toBe("图书馆 3 楼自习区")
     expect(coordSecret.data?.location_lat).toBeCloseTo(31.230416, 5)
     expect(coordSecret.data?.location_lng).toBeCloseTo(121.473701, 5)
   })
