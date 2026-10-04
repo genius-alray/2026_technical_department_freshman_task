@@ -73,10 +73,10 @@
    深色主题下就是一道白闪。修法：`components/pwa/status-bar-keeper.tsx` 把状态栏相关的 meta 镜像一份
    交给 DOM 直接持有（不归 React 管），兜底色也从白色改成品牌青柠。生产构建实测：跳转全程
    `theme-color` 最少仍有 2 个，被移除的只有 React 自己那一份。
-11. **根目录 `app/loading.tsx` 会包住所有子路由（含 not-found）** —— 页面里抛 `notFound()` 时，
+10. **根目录 `app/loading.tsx` 会包住所有子路由（含 not-found）** —— 页面里抛 `notFound()` 时，
     流式响应已经把 200 发出去了，状态码改不回来：E2E 里「他人访问已撤单物品应 404」直接变 200，
     同一 describe 的下一个用例也跟着挂。首屏骨架必须放进路由组（`app/(wall)/loading.tsx`），只作用于 `/`。
-12. **「查看定位」在高德网页版上还要再点一次**：`uri.amap.com` 的 `callnative=1` 只是高德自己的落地页，
+11. **「查看定位」在高德网页版上还要再点一次**：`uri.amap.com` 的 `callnative=1` 只是高德自己的落地页，
     用户还得在那一页再点「打开高德地图」。要一步进 App 必须直接跳 `iosamap://` / `androidamap://`；
     安卓更稳的是 `intent://` + `S.browser_fallback_url` —— 没装 App 时 Chrome 会自己回落网页版，
     而不是停在 `ERR_UNKNOWN_URL_SCHEME` 错误页（那样连兜底的 JS 都没机会跑）。
