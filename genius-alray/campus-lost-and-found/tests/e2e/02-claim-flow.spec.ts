@@ -122,6 +122,11 @@ test.describe("认领流程", () => {
       await expect(page.getByTestId("phone-call-dialog")).toContainText(
         keptItem.contact
       )
+      // 「确认」那一半也要真的有拨号地址，否则二次确认等于装饰
+      await expect(page.getByTestId("phone-call-confirm")).toHaveAttribute(
+        "href",
+        "tel:" + keptItem.contact
+      )
       await page.getByTestId("phone-call-cancel").click()
       await expect(page.getByTestId("phone-call-dialog")).toHaveCount(0, {
         timeout: T,
@@ -190,6 +195,11 @@ test.describe("认领流程", () => {
       await expect(page.getByTestId("map-open-dialog")).toBeVisible({
         timeout: T,
       })
+      // 确认后用高德打开（只有位置描述时走搜索 URL）
+      await expect(page.getByTestId("map-open-confirm")).toHaveAttribute(
+        "href",
+        /amap\.com/
+      )
       await page.getByTestId("map-open-cancel").click()
       await expect(page.getByTestId("map-open-dialog")).toHaveCount(0, {
         timeout: T,

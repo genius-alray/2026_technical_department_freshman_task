@@ -20,7 +20,7 @@ export type AiSdkConfig = {
 const PROVIDER_NAME = "deepseek"
 
 /**
- * step-5-preview 是**推理模型**，实测结论决定了下面的参数：
+ * deepseek-flash 是**推理模型**，实测结论决定了下面的参数：
  * 1) 推理内容会占用 completion token。max_tokens 给小了会 finish_reason=length 且 content 为空。
  *    因此给足 16000（正常一次分析约 900-2500 token）。
  * 2) reasoning_effort 必须用 "low"。实测 "high" 档在结构化抽取上会崩坏

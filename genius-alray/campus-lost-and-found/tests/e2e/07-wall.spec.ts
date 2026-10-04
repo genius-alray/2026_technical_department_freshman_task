@@ -55,6 +55,13 @@ test.describe("失物墙", () => {
       await expect(card.locator("img").first()).toBeVisible({ timeout: T })
       await expect(card).toContainText(item.description)
 
+      // 双列瀑布流不能把页面撑出横向滚动
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth - window.innerWidth
+        )
+      ).toBeLessThanOrEqual(1)
+
       // 未登录不进详情：点卡片去登录，并带回跳地址
       await card.click()
       await page.waitForURL(/\/login\?next=/, { timeout: T })

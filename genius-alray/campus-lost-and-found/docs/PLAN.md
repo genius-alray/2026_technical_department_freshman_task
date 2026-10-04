@@ -57,7 +57,7 @@
       motion/{primitives,motion-provider}.tsx   动效统一出口（只准用，不准各自写）
       nav/title-bar.tsx                         全站唯一的标题栏（含首页右上角「我的」入口）
       ui/**                                     shadcn 组件
-    supabase/migrations/            3 个迁移（core / rls_and_grants / rpcs）
+    supabase/migrations/            5 个迁移（extensions / core / rls_and_grants / rpcs / storage）
     tests/{unit,rls,e2e,live,helpers}/
 
 ### 1.3 数据访问纪律

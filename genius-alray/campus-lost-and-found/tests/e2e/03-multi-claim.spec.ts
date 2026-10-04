@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test"
 import type { TestContext } from "../helpers/supabase"
 import { itemStatus } from "../helpers/fixtures"
 import {
+  cardByTitle,
   createE2EUser,
   createPublishedItem,
   cleanupUiUser,
@@ -90,6 +91,12 @@ test.describe("多人认领与认领人名单", () => {
         timeout: T,
       })
 
+      // 已认领的物品仍然留在墙上，并带「已认领」角标
+      await pageB.goto("/")
+      const wallCard = cardByTitle(pageB, item.title)
+      await expect(wallCard).toBeVisible({ timeout: T })
+      await expect(wallCard).toContainText("已认领", { timeout: T })
+
       // 拾主：/me → 查看认领人 → 两个人都在
       const ownerPage = await ownerContext.newPage()
       await signInViaUi(ownerPage, owner.phone)
@@ -114,8 +121,14 @@ test.describe("多人认领与认领人名单", () => {
       await expect(ownerPage.getByText(phoneFor(seedB))).toBeVisible({
         timeout: T,
       })
-      // 已被认领 → 名单页不给撤单按钮
-      await expect(ownerPage.getByTestId("withdraw-open")).toHaveCount(0)
+      // 已被认领 → 「我的发布」里那件物品不再给撤单按钮（owner 名下只有这一件）
+      await ownerPage.goto("/me")
+      await expect(ownerPage.getByText(item.title).first()).toBeVisible({
+        timeout: T,
+      })
+      await expect(ownerPage.getByTestId("withdraw-open")).toHaveCount(0, {
+        timeout: T,
+      })
     } finally {
       await ctxA.close()
       await ctxB.close()

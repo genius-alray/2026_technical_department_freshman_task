@@ -63,7 +63,7 @@ Server Component 优先用 CSS 反馈，不要为动效改成客户端组件；�
 
 ## 7. testid 清单
 
-改 UI 时同步这份清单；`tests/e2e/**` 只按它断言，不依赖文案与 DOM 结构。
+改 UI 时同步这份清单；`tests/e2e/**` 优先按它定位元素，少量断言仍会用到文案与结构（如「已认领」角标、标题栏数量）。
 
 - 墙：`publish-entry` `wall-empty` `wall-error` `item-wall` `item-card` `load-more` `wall-no-more`
 - 详情：`item-back` `item-owner-notice` `pickup-open` `pickup-view-info` `pickup-claimed` `pickup-withdrawn`

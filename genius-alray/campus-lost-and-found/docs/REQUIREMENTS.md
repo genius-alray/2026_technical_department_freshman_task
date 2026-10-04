@@ -124,6 +124,8 @@ app_config         max_photos(3), page_size(20)   —— RLS 全禁，只能经 
 | `withdraw_found_item(p_item_id)`            | 物品 owner     | 撤单；**仅 status=published 时允许**（已认领 → P0001）                                                          |
 | `create_pickup(p_item_id, p_name, p_phone)` | authenticated  | 实名认领；**成功即把物品置为 claimed**；**允许多人认领**；已撤单 → P0001；拾主认领自己的 → 42501；本人重复提交为更新 |
 | `reveal_found_item_contact(p_item_id)`      | 拾主或已认领者 | 返回联系方式或位置                                                                                              |
+| `release_found_item_claim(p_item_id)`       | 认领人本人     | 撤回认领：物品回到 published，**认领记录保留**（之后仍可再认领）                                                |
+| `list_found_item_claimers(p_item_id)`       | 拾主或已认领者 | 列出该物品的**全部认领人**，用于多人认领时互相联系                                                              |
 | `get_app_config()`                          | anon + 登录    | 返回 max_photos / page_size                                                                                     |
 
 > **实现约定**：RETURNS TABLE 的 OUT 参数一律加 `out_` 前缀。本项目已因 OUT 参数与列名撞名踩过两次
@@ -147,13 +149,13 @@ app_config         max_photos(3), page_size(20)   —— RLS 全禁，只能经 
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------- |
 | 它是推理模型，reasoning 占用 completion token；max_tokens 给小了会 finish_reason=length 且 content 为空                                                      | `maxOutputTokens=16000`                                           |
 | `reasoning_effort=high` 在结构化抽取上会崩坏（title 变成乱码、字段混入 base64）                                                                              | 固定 `reasoningEffort=low`                                        |
-| `response_format: json_object` 不可靠（实测返回空对象）                                                                                                      | 只用 `json_schema`（即 `generateObject`）                         |
-| `createOpenAICompatible` 的 `supportsStructuredOutputs` **默认为 false**，不开它 provider 根本不发 json_schema，`generateObject` 会退化成「靠提示词求 JSON」 | 显式 `supportsStructuredOutputs: true` + `strictJsonSchema: true` |
+| `response_format: json_schema` 被该模型拒收（实测报错：该 response_format 类型暂不可用）                                                                                                      | 关掉结构化输出（`supportsStructuredOutputs: false`），用 system prompt 要求 JSON；`json_object` 已用真实 PNG 实测可用                         |
+| 打开 `supportsStructuredOutputs` 会让 SDK 发出 `response_format: json_schema`（被拒收；SDK 会打印 responseFormat 不支持的告警） | 保持 `supportsStructuredOutputs: false`；zod schema 只用于校验返回值 |
 | 自由键的 object（additionalProperties）会被填成空字符串                                                                                                      | schema 只用扁平字段（title / description）                        |
 | 拍照建议需要「通过 / 补拍」两态，boolean 字段不够稳                                                                                                          | 用字符串枚举 `verdict: ok                                         | retake`（实测返回「物品不完整，请退后拍全貌」） |
 | `{ type: "image" }` content part 已被 AI SDK 弃用                                                                                                            | 改用 `{ type: "file", data, mediaType }`                          |
 | 本地图片是私有桶签名 URL，主机名 `127.0.0.1`，**远端模型无法访问**                                                                                           | provider 先在服务端下载成字节再发送                               |
-| providerOptions 的键必须是 camelCase                                                                                                                         | provider name 用 `stepfun`                                        |
+| providerOptions 的键必须是 camelCase                                                                                                                         | provider name 用 `deepseek`                                        |
 
 - 离线基线（`pnpm test:unit` / `test:rls` / `test:e2e`）与 E2E 的 dev server 都**强制 `AI_PROVIDER=mock`**（见 `tests/setup.ts` 与 `playwright.config.ts`）。
 - 真实模型只用于 `pnpm test:live` 与手工验证。

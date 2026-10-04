@@ -373,23 +373,19 @@ export function PublishClient({ maxPhotos, defaultContact }: Props) {
       }
 
       setPhase("uploading")
-      const uploaded: Photo[] = []
 
       for (let index = 0; index < batch.length; index += 1) {
         setUploadNote("正在上传第 " + (index + 1) + "/" + batch.length + " 张…")
         const compressed = await compressImage(batch[index])
         const path = await uploadImage(compressed, batchId)
         const photo = { path, preview: URL.createObjectURL(compressed) }
-        uploaded.push(photo)
         // 逐张入 state：整批中途失败时，已成功的照片不能丢（否则预览 URL 与存储对象都成孤儿）
         pathsRef.current = [...pathsRef.current, photo.path]
         setPhotos((prev) => [...prev, photo])
       }
 
-      toast.add({
-        type: "success",
-        title: "已上传 " + uploaded.length + " 张照片",
-      })
+      // 【第 8 轮】不报张数：「最多 3 张、不提示数量」是明确的 UI 要求
+      toast.add({ type: "success", title: "照片已上传" })
     })
   }
 

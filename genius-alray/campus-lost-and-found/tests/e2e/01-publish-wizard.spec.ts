@@ -52,26 +52,39 @@ test.describe("发布向导", () => {
     ).toHaveCount(0)
     await expect(page.getByText("确认信息")).toHaveCount(0)
 
-    // 上限 3 张：满了以后「添加照片」消失，界面从不提示数量
-    await uploadPhotos(page, 3)
+    // 照片网格的最后一个元素必须是「添加照片」
+    await uploadPhotos(page, 2)
+    const addTileIsLast = await page
+      .getByTestId("photo-add")
+      .evaluate(
+        (el) =>
+          el.parentElement === el.parentElement?.parentElement?.lastElementChild
+      )
+    expect(addTileIsLast, "「添加照片」必须是网格的最后一个").toBe(true)
+
+    // 上限 3 张：满了以后「添加照片」消失，且界面从不报张数
+    await uploadPhoto(page, "photo-3.png")
+    await expect(photoGrid(page)).toHaveCount(3, { timeout: 60_000 })
     await expect(page.getByTestId("photo-add")).toHaveCount(0, {
       timeout: T,
     })
-    await expect(page.getByText(/已上传 \d+\//)).toHaveCount(0)
+    await expect(page.getByText(/已上传\s*\d/)).toHaveCount(0)
 
     await page.getByRole("button", { name: "下一步" }).click()
 
-    // 点「下一步」才检查一次照片（全屏）；3 张 → 不弹补拍建议
+    // 点「下一步」才检查一次照片（全屏）
     await expect(page.getByTestId("photo-check-loading")).toBeVisible({
       timeout: T,
     })
-    await expect(page.getByTestId("photo-advice-dialog")).toHaveCount(0)
 
     // 第 2 屏：识别期间全屏加载，屏幕上没有输入框
     await expect(page.getByTestId("analyze-loading")).toBeVisible({
       timeout: T,
     })
     await expect(page.locator("#title")).toHaveCount(0)
+    // 检查已经结束（否则对话框根本没机会出现）：3 张 → 不该给补拍建议
+    await expect(page.getByTestId("photo-advice-dialog")).toHaveCount(0)
+    await expect(page.getByTestId("photo-advice-skip")).toHaveCount(0)
 
     await expect(page.locator("#title")).toBeVisible({ timeout: 60_000 })
     await expect(page.locator("#title")).not.toHaveValue("", {
@@ -198,5 +211,46 @@ test.describe("发布向导", () => {
     await expect(page.locator("#title")).toBeVisible({ timeout: T })
     await expect(page.locator("#title")).toHaveValue(analyzed)
     expect(new URL(page.url()).pathname).toBe("/publish")
+  })
+
+  test("指定存放位置：拿不到坐标时用位置描述也能发布", async ({ page }) => {
+    const editedTitle = "E2E 留原地 " + Math.random().toString(36).slice(2, 6)
+    const locationLabel = "图书馆 3 楼自习区靠窗第三排"
+
+    await page.goto("/publish")
+    await uploadPhotos(page, 2)
+    await page.getByRole("button", { name: "下一步" }).click()
+
+    await expect(page.locator("#title")).toBeVisible({ timeout: 60_000 })
+    await expect(page.locator("#title")).not.toHaveValue("", {
+      timeout: 60_000,
+    })
+    await page.locator("#title").fill(editedTitle)
+    await page.getByRole("button", { name: "下一步" }).click()
+
+    await expect(page.getByTestId("custody-in-place")).toBeVisible({
+      timeout: T,
+    })
+    await page.getByTestId("custody-in-place").click()
+
+    // headless 没有定位权限：定位失败后必须能靠位置描述发布
+    await expect(page.locator("#locationLabel")).toBeVisible({ timeout: T })
+    await page.locator("#locationLabel").fill(locationLabel)
+    await page.getByRole("button", { name: "发布", exact: true }).click()
+
+    await expect(page.getByTestId("publish-success")).toBeVisible({
+      timeout: T,
+    })
+    await page.waitForURL(/\/$/, { timeout: T })
+
+    const row = await ctx.admin
+      .from("found_items")
+      .select("id, custody, location_label, location_lat, status")
+      .eq("title", editedTitle)
+      .single()
+    expect(row.error).toBeNull()
+    expect(row.data?.custody).toBe("in_place")
+    expect(row.data?.location_label).toBe(locationLabel)
+    expect(row.data?.status).toBe("published")
   })
 })

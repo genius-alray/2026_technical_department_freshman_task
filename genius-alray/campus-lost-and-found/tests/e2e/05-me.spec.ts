@@ -57,6 +57,10 @@ test.describe("我的与个人信息", () => {
       await expect(page.getByTestId("profile-entry")).toContainText(
         accountPhone
       )
+      // 头像用姓名首字（不是图片）
+      await expect(
+        page.getByTestId("profile-entry").getByText("王", { exact: true })
+      ).toBeVisible()
 
       // 改姓名 → 读回
       await page.getByTestId("profile-entry").click()
@@ -67,6 +71,13 @@ test.describe("我的与个人信息", () => {
       await expect(page.getByTestId("profile-entry")).toContainText("李四", {
         timeout: T,
       })
+
+      // 「我的信息」支持 ?next=（认领流程会带来源页）：返回键指向来源而不是「我的」
+      await page.goto("/me/profile?next=/items/" + item.id)
+      await expect(page.getByRole("link", { name: "返回" })).toHaveAttribute(
+        "href",
+        "/items/" + item.id
+      )
 
       // 认领：确认框里只读展示账号信息，号码不可拨号
       await page.goto("/items/" + item.id)
@@ -101,12 +112,16 @@ test.describe("我的与个人信息", () => {
       await expect(publishedTab).toBeVisible({ timeout: T })
       await expect(pickupsTab).toBeVisible({ timeout: T })
 
-      // 默认只看到「我的发布」
-      await expect(page.getByTestId("me-pickup-card")).toBeHidden()
+      // 默认只看到「我的发布」：发布面板真的渲染了（该账号还没发布过 → 空态），
+      // 且认领卡片不在这屏
+      await expect(page.getByText("还没有发布")).toBeVisible({ timeout: T })
+      await expect(page.getByTestId("me-pickup-card")).toHaveCount(0)
 
       await pickupsTab.click()
       const card = page.getByTestId("me-pickup-card").first()
       await expect(card).toBeVisible({ timeout: T })
+      // 切到认领后，发布那段列表不再占屏
+      await expect(page.getByText("还没有发布")).toHaveCount(0)
       await expect(card).toContainText(item.title)
       // 列表里不再内联手机号
       await expect(card).not.toContainText("13900139000")
@@ -117,9 +132,20 @@ test.describe("我的与个人信息", () => {
         timeout: T,
       })
 
-      // 退出登录：二次确认，取消则留在原地
+      // 退出登录：入口在顶部卡片右侧（用位置断言，不是只断言存在）
       await page.goto("/me")
-      await page.getByTestId("sign-out").click()
+      const signOut = page.getByTestId("sign-out")
+      await expect(signOut).toBeVisible({ timeout: T })
+      const signOutBox = await signOut.boundingBox()
+      const viewport = page.viewportSize()
+      expect(signOutBox).not.toBeNull()
+      expect(viewport).not.toBeNull()
+      expect(signOutBox!.x, "退出登录必须在顶部卡片右侧").toBeGreaterThan(
+        viewport!.width / 2
+      )
+
+      // 二次确认，取消则留在原地
+      await signOut.click()
       const dialog = page.getByTestId("sign-out-confirm")
       await expect(dialog).toBeVisible({ timeout: T })
       await page.getByTestId("sign-out-cancel").click()
