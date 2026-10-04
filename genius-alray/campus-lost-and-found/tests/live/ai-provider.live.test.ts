@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 
 import { getAiProviders } from "@/lib/ai"
 import {
+  AUTH_EMAIL_DOMAIN,
   createAdminClient,
   IMAGE_BUCKET,
   TEST_PASSWORD,
@@ -79,18 +80,26 @@ function looksClean(value: string): boolean {
   return !BAD_MARKERS.some((re) => re.test(value))
 }
 
+/** 第 7 轮起 profiles.real_name / phone 是 NOT NULL，建临时账号必须带上这两项 */
+function liveAccount() {
+  const phone =
+    "13" +
+    Math.floor(Math.random() * 1_000_000_000)
+      .toString()
+      .padStart(9, "0")
+  return { phone, email: phone + "@" + AUTH_EMAIL_DOMAIN }
+}
+
 describe.skipIf(!enabled)("真实 AI provider：拍照 → 名称 + 描述", () => {
   it("signed URL（127.0.0.1）经服务端下载后能产出干净的 title/description", async () => {
     const admin = createAdminClient()
-    const runId = Math.random().toString(36).slice(2, 8)
-    const username = ("live" + runId).slice(0, 20)
-    const email = username + "@campus.local"
+    const { phone, email } = liveAccount()
 
     const created = await admin.auth.admin.createUser({
       email,
       password: TEST_PASSWORD,
       email_confirm: true,
-      user_metadata: { username },
+      user_metadata: { real_name: "联通性测试", phone },
     })
     expect(created.error).toBeNull()
     const userId = created.data.user!.id
@@ -139,15 +148,13 @@ describe.skipIf(!enabled)("真实 AI provider：拍照 → 名称 + 描述", () 
 
   it("拍完就给建议：review 能返回结构化的通过/补拍判断", async () => {
     const admin = createAdminClient()
-    const runId = Math.random().toString(36).slice(2, 8)
-    const username = ("livev" + runId).slice(0, 20)
-    const email = username + "@campus.local"
+    const { phone, email } = liveAccount()
 
     const created = await admin.auth.admin.createUser({
       email,
       password: TEST_PASSWORD,
       email_confirm: true,
-      user_metadata: { username },
+      user_metadata: { real_name: "联通性测试", phone },
     })
     expect(created.error).toBeNull()
     const userId = created.data.user!.id
@@ -188,15 +195,13 @@ describe.skipIf(!enabled)("真实 AI provider：拍照 → 名称 + 描述", () 
 
   it("多张照片同样可用（一次分析全部照片）", async () => {
     const admin = createAdminClient()
-    const runId = Math.random().toString(36).slice(2, 8)
-    const username = ("livem" + runId).slice(0, 20)
-    const email = username + "@campus.local"
+    const { phone, email } = liveAccount()
 
     const created = await admin.auth.admin.createUser({
       email,
       password: TEST_PASSWORD,
       email_confirm: true,
-      user_metadata: { username },
+      user_metadata: { real_name: "联通性测试", phone },
     })
     expect(created.error).toBeNull()
     const userId = created.data.user!.id

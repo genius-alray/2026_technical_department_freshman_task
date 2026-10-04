@@ -1,6 +1,7 @@
 import { expect, type Page } from "@playwright/test"
 import { publishItem } from "../helpers/fixtures"
 import {
+  AUTH_EMAIL_DOMAIN,
   IMAGE_BUCKET,
   PNG_BYTES,
   TEST_PASSWORD,
@@ -12,16 +13,21 @@ import {
 /**
  * E2E 共享工具。
  * 约定：
- * - 「注册/登录/发布/领取」等用户可见行为走真实 UI；
+ * - 「注册/登录/发布/认领」等用户可见行为走真实 UI；
  * - 造数据（用户、已发布物品、私有桶对象）走 service_role + lib/db 的真实 RPC 路径，
  *   这样用例只验证被测行为，不被无关步骤拖慢。
- * - 所有账号带随机后缀，结束后删除用户（级联物品/图片/领取）并清理对象。
+ * - 第 7 轮起**账号就是手机号**：注册填「真实姓名 + 手机号 + 密码 + 勾选同意」，
+ *   登录只填手机号。内部邮箱由手机号派生，测试里用 phoneFor(seed) 造号。
  */
 
-export const E2E_PASSWORD = TEST_PASSWORD
+// 规格文件从本模块取类型，这里统一再导出一次
+export type { TestContext, TestUser }
 
-/** 测试账号的「种子」：第 7 轮起账号是手机号，这里只用来派生手机号与邮箱 */
-export function uniqueUsername(prefix: string): string {
+export const E2E_PASSWORD = TEST_PASSWORD
+export const DEFAULT_REAL_NAME = "测试用户"
+
+/** 测试账号的「种子」：只用来派生手机号/邮箱，不是用户名 */
+export function uniqueSeed(prefix: string): string {
   const safe = prefix
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "")
@@ -40,14 +46,22 @@ export function phoneFor(seed: string): string {
   return "13" + tail.toString().padStart(9, "0")
 }
 
+/** 账号（auth.users.email）由手机号派生，清理 UI 注册的用户时用 */
+export function emailFor(seed: string): string {
+  return phoneFor(seed) + "@" + AUTH_EMAIL_DOMAIN
+}
+
 /** 注册：真实姓名 + 手机号 + 密码 + 勾选同意条款 */
 export async function signUpViaUi(
   page: Page,
   seed: string,
-  password = E2E_PASSWORD
+  options: { realName?: string; password?: string } = {}
 ): Promise<void> {
+  const realName = options.realName ?? DEFAULT_REAL_NAME
+  const password = options.password ?? E2E_PASSWORD
+
   await page.goto("/signup")
-  await page.fill("#realName", "测试用户")
+  await page.fill("#realName", realName)
   await page.fill("#phone", phoneFor(seed))
   await page.fill("#password", password)
   await page.fill("#confirmPassword", password)
@@ -59,11 +73,11 @@ export async function signUpViaUi(
 /** 登录：手机号 + 密码 */
 export async function signInViaUi(
   page: Page,
-  seed: string,
+  phone: string,
   password = E2E_PASSWORD
 ): Promise<void> {
   await page.goto("/login")
-  await page.fill("#phone", phoneFor(seed))
+  await page.fill("#phone", phone)
   await page.fill("#password", password)
   await page.getByRole("button", { name: "登录", exact: true }).click()
   await expect(page).not.toHaveURL(/\/login/, { timeout: 30_000 })
@@ -83,7 +97,18 @@ export async function uploadPhoto(
   await chooser.setFiles({ name, mimeType: "image/png", buffer: PNG_BYTES })
 }
 
-export type E2EUser = { username: string; user: TestUser }
+/** 已上传照片的缩略图（拍照屏的网格） */
+export function photoGrid(page: Page) {
+  return page.getByAltText("已上传照片")
+}
+
+/** 连续上传 n 张，并确认网格里真的出现了 n 张 */
+export async function uploadPhotos(page: Page, count: number): Promise<void> {
+  for (let index = 0; index < count; index += 1) {
+    await uploadPhoto(page, "photo-" + (index + 1) + ".png")
+    await expect(photoGrid(page)).toHaveCount(index + 1, { timeout: 60_000 })
+  }
+}
 
 export type E2EItem = {
   id: string
@@ -93,19 +118,18 @@ export type E2EItem = {
   locationLabel: string
 }
 
-/** 建一个测试账号（API 侧），返回可在 UI 里登录的用户名 */
+/** 建一个测试账号（API 侧），返回带 phone / realName 的用户 */
 export async function createE2EUser(
   ctx: TestContext,
   prefix: string
-): Promise<E2EUser> {
-  const user = await ctx.user(prefix)
-  return { username: user.username, user }
+): Promise<TestUser> {
+  return ctx.user(prefix)
 }
 
 /** 用真实 RPC 路径发布一条物品，并上传真实图片对象（保证卡片/详情页有图可看） */
 export async function createPublishedItem(
   ctx: TestContext,
-  owner: E2EUser,
+  owner: TestUser,
   options: {
     title?: string
     description?: string
@@ -120,7 +144,7 @@ export async function createPublishedItem(
   const photos = options.photos ?? 1
   const paths: string[] = []
   for (let index = 0; index < photos; index += 1) {
-    const path = owner.user.id + "/" + crypto.randomUUID() + ".png"
+    const path = owner.id + "/" + crypto.randomUUID() + ".png"
     const upload = await ctx.admin.storage
       .from(IMAGE_BUCKET)
       .upload(path, PNG_BYTES, { contentType: "image/png", upsert: true })
@@ -138,7 +162,7 @@ export async function createPublishedItem(
   const contact = options.contact ?? "13800138000"
   const locationLabel = options.locationLabel ?? ""
 
-  const item = await publishItem(owner.user, {
+  const item = await publishItem(owner, {
     title,
     description,
     custody,
@@ -176,20 +200,16 @@ export async function submitClaimWithConfirm(page: Page): Promise<void> {
 
 /**
  * 清理「通过 UI 注册」的账号：ctx.cleanup() 只知道 API 侧创建的用户，
- * 这里按用户名反查 id，删除其私有桶对象（{uid}/{itemId}/{uuid}.ext 两级目录）
- * 后再删用户（级联物品/图片/领取记录）。
+ * 这里按手机号派生的邮箱反查 id，删除其私有桶对象后再删用户（级联物品/图片/认领）。
  */
-export async function cleanupUserByUsername(
+export async function cleanupUiUser(
   ctx: TestContext,
   seed: string
 ): Promise<void> {
-  const email =
-    phoneFor(seed) +
-    "@" +
-    (process.env.NEXT_PUBLIC_AUTH_EMAIL_DOMAIN ?? "campus.local")
+  const email = emailFor(seed)
   const listed = await ctx.admin.auth.admin.listUsers({
     page: 1,
-    perPage: 200,
+    perPage: 1000,
   })
   const userId = listed.data?.users.find((user) => user.email === email)?.id
   if (!userId) return

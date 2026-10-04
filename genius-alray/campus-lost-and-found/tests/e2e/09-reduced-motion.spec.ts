@@ -1,13 +1,15 @@
 import { expect, test } from "@playwright/test"
+import type { TestContext } from "../helpers/supabase"
 import {
   cardByTitle,
-  cleanupUserByUsername,
+  cleanupUiUser,
   newTestContext,
+  phoneFor,
+  photoGrid,
   signUpViaUi,
-  uniqueUsername,
+  uniqueSeed,
   uploadPhoto,
 } from "./helpers"
-import type { TestContext } from "../helpers/supabase"
 
 const T = 30_000
 
@@ -17,22 +19,22 @@ const T = 30_000
  */
 test.use({ reducedMotion: "reduce" })
 
-test.describe("场景 9：reducedMotion=reduce 下的发布主流程", () => {
+test.describe("减少动态效果下的发布主流程", () => {
   let ctx: TestContext
-  let username = ""
+  let seed = ""
 
   test.beforeEach(async ({ page }) => {
-    test.setTimeout(240_000)
+    test.setTimeout(300_000)
     ctx = newTestContext()
-    username = uniqueUsername("reduce")
-    await signUpViaUi(page, username)
+    seed = uniqueSeed("reduce")
+    await signUpViaUi(page, seed)
   })
 
   test.afterEach(async () => {
-    await cleanupUserByUsername(ctx, username)
+    await cleanupUiUser(ctx, seed)
   })
 
-  test("减少动态效果时发布流程可完成，元素始终可见可点", async ({ page }) => {
+  test("元素始终可用，四屏能走完", async ({ page }) => {
     // 先确认环境真的生效（避免选项没带上导致「假验证」）
     const reduced = await page.evaluate(
       () => window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -41,13 +43,12 @@ test.describe("场景 9：reducedMotion=reduce 下的发布主流程", () => {
 
     const editedTitle = "E2E 降动 " + Math.random().toString(36).slice(2, 6)
     await page.goto("/publish")
+    await expect(page.getByTestId("photo-add")).toBeVisible({ timeout: T })
 
-    await expect(page.getByRole("button", { name: /选择照片/ })).toBeVisible({
-      timeout: T,
-    })
     await uploadPhoto(page, "photo-1.png")
-    await expect(page.getByText("已上传 1/5")).toBeVisible({ timeout: 60_000 })
-    // 第 5 轮：点「下一步」时统一检查一次；1 张 → 弹补拍对话框（减少动态效果下也必须正常出现）
+    await expect(photoGrid(page)).toHaveCount(1, { timeout: 60_000 })
+
+    // 只有一张 → 补拍建议对话框也必须正常出现（对话框不是「循环动效」）
     await page.getByRole("button", { name: "下一步" }).click()
     await expect(page.getByTestId("photo-advice-dialog")).toBeVisible({
       timeout: T,
@@ -61,14 +62,11 @@ test.describe("场景 9：reducedMotion=reduce 下的发布主流程", () => {
     await page.locator("#title").fill(editedTitle)
     await page.getByRole("button", { name: "下一步" }).click()
 
-    await expect(page.getByRole("button", { name: "代为保管" })).toBeVisible({
-      timeout: T,
-    })
-    await page.getByRole("button", { name: "代为保管" }).click()
-    await expect(page.locator("#contact")).toBeVisible({ timeout: T })
-    await page.locator("#contact").fill("13500135000")
-    await page.getByRole("button", { name: "发布", exact: true }).click()
+    await expect(page.getByTestId("custody-kept")).toBeVisible({ timeout: T })
+    await page.getByTestId("custody-kept").click()
+    await expect(page.getByText(phoneFor(seed))).toBeVisible({ timeout: T })
 
+    await page.getByRole("button", { name: "发布", exact: true }).click()
     await expect(page.getByTestId("publish-success")).toBeVisible({
       timeout: T,
     })

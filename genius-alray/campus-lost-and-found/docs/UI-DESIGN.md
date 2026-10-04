@@ -63,16 +63,20 @@ Server Component 优先用 CSS 反馈，不要为动效改成客户端组件；�
 
 ## 7. testid 清单
 
-- 墙：`publish-entry` `wall-empty` `item-wall` `item-card` `load-more` `wall-no-more`
+改 UI 时同步这份清单；`tests/e2e/**` 只按它断言，不依赖文案与 DOM 结构。
+
+- 墙：`publish-entry` `wall-empty` `wall-error` `item-wall` `item-card` `load-more` `wall-no-more`
 - 详情：`item-back` `item-owner-notice` `pickup-open` `pickup-view-info` `pickup-claimed` `pickup-withdrawn`
   `gallery-track` `gallery-dot-N` `gallery-counter`
-- 认领：`claim-confirm` `claim-confirm-ok` `claim-confirm-cancel` `claim-guide` `pickup-revealed`
-  `reveal-contact` `reveal-location` `claim-info` `claim-info-name` `claim-others` `claim-release-open`
-  `claim-release-confirm` `claim-release-ok` `claim-release-cancel`
+- 认领：`claim-confirm` `claim-confirm-profile` `claim-confirm-name` `claim-confirm-ok` `claim-confirm-cancel`
+  `claim-error` `claim-guide` `pickup-revealed` `reveal-contact` `reveal-location` `claim-info` `claim-info-name`
+  `claim-others` `claim-other-phone` `claim-release` `claim-release-open` `claim-release-confirm` `claim-release-ok`
+  `claim-release-cancel`
 - 发布：`photo-add` `photo-check-loading` `photo-advice-dialog` `photo-advice-retake` `photo-advice-skip`
   `analyze-loading` `custody-kept` `custody-in-place` `publish-success`
-- 我的：`profile-entry` `sign-out` `sign-out-confirm` `sign-out-ok` `withdraw-open` `withdraw-confirm` `withdraw-ok`
-  `me-pickup-card` `profile-name` `profile-phone` `profile-submit`
+- 我的：`profile-entry` `sign-out` `sign-out-confirm` `sign-out-cancel` `sign-out-ok` `withdraw-open`
+  `withdraw-confirm` `withdraw-cancel` `withdraw-ok` `me-pickup-card` `profile-name` `profile-phone` `profile-submit`
+  `picker-phone-<pickupId>`
 - 组件/其它：`phone-link` `phone-call-dialog` `phone-call-confirm` `phone-call-cancel` `location-link`
   `map-open-dialog` `map-open-confirm` `map-open-cancel` `title-bar` `me-entry` `browse-without-login`
 
