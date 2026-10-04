@@ -33,7 +33,7 @@ export type TitleBarConfig = {
 const HIDDEN_ROUTES = [/^\/login$/, /^\/signup$/]
 
 const ROUTES: Array<(pathname: string) => TitleBarConfig | null> = [
-  (p) => (p === "/" ? { title: "失物墙", showMe: true } : null),
+  (p) => (p === "/" ? { title: "失物招领墙", showMe: true } : null),
   (p) => (p === "/publish" ? { title: "发布招领", backHref: "/" } : null),
   (p) => {
     const m = p.match(/^\/items\/([^/]+)\/claim$/)

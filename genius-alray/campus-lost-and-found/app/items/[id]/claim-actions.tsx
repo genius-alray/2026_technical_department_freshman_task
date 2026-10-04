@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation"
 import { ContactIcon, HandHeartIcon } from "lucide-react"
 
 import { PhoneText } from "@/components/contact/phone-link"
-import { SuccessOverlay } from "@/components/motion/primitives"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import {
@@ -42,15 +41,7 @@ export function ClaimActions({
   const router = useRouter()
   const [open, setOpen] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
-  const [done, setDone] = React.useState(false)
   const [pending, startTransition] = React.useTransition()
-  const timerRef = React.useRef<number | null>(null)
-
-  React.useEffect(() => {
-    return () => {
-      if (timerRef.current !== null) window.clearTimeout(timerRef.current)
-    }
-  }, [])
 
   const infoPath = "/items/" + itemId + "/claim"
 
@@ -82,10 +73,9 @@ export function ClaimActions({
         return
       }
       setOpen(false)
-      setDone(true)
-      timerRef.current = window.setTimeout(() => {
-        router.push(infoPath)
-      }, 900)
+      // 直接跳转：认领成功后详情页会立刻变成已认领状态，
+      // 再等 900ms 的对勾反而会因为组件切换分支被卸载而丢掉定时器。
+      router.push(infoPath)
     })
   }
 
@@ -160,8 +150,6 @@ export function ClaimActions({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <SuccessOverlay show={done} message="认领成功" testId="claim-success" />
     </>
   )
 }

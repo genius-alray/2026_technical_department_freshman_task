@@ -26,20 +26,31 @@ export default async function SignUpPage({
           <h1 className="font-heading text-2xl font-semibold tracking-tight">
             注册
           </h1>
-          <p className="text-sm text-muted-foreground">无需邮箱，注册即可用</p>
+          <p className="text-sm text-muted-foreground">
+            姓名和手机号用于认领时联系与核对
+          </p>
         </div>
 
         <SignUpForm nextPath={nextPath} />
 
-        <p className="text-center text-sm text-muted-foreground">
-          已有账号？
+        <div className="flex flex-col items-center gap-3 text-center text-sm text-muted-foreground">
+          <p>
+            已有账号？
+            <Link
+              href="/login"
+              className="ml-1 text-primary underline-offset-4 hover:underline"
+            >
+              去登录
+            </Link>
+          </p>
           <Link
-            href="/login"
-            className="ml-1 text-primary underline-offset-4 hover:underline"
+            href="/"
+            data-testid="browse-without-login"
+            className="underline underline-offset-4 hover:text-foreground"
           >
-            去登录
+            随便看看
           </Link>
-        </p>
+        </div>
       </div>
     </FadeIn>
   )

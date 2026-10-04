@@ -43,7 +43,7 @@ export function ReleaseClaim({ itemId }: { itemId: string }) {
         onClick={() => setOpen(true)}
         className="text-blue-600 underline-offset-4 hover:underline dark:text-blue-400"
       >
-        拿错了，不是我的
+        领错了？
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>

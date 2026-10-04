@@ -71,7 +71,7 @@ export default async function ClaimInfoPage({
     <div className="flex min-w-0 flex-1 flex-col gap-5 px-4 py-5">
       <PageTitle title="认领信息" />
 
-      <ol className="flex flex-col gap-2 text-sm">
+      <ol data-testid="claim-guide" className="flex flex-col gap-2 text-sm">
         {GUIDES.map((guide, index) => (
           <li key={guide} className="flex gap-2">
             <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-medium">

@@ -26,20 +26,29 @@ export default async function LoginPage({
           <h1 className="font-heading text-2xl font-semibold tracking-tight">
             登录
           </h1>
-          <p className="text-sm text-muted-foreground">用用户名登录</p>
+          <p className="text-sm text-muted-foreground">用手机号登录</p>
         </div>
 
         <LoginForm nextPath={nextPath} />
 
-        <p className="text-center text-sm text-muted-foreground">
-          还没有账号？
+        <div className="flex flex-col items-center gap-3 text-center text-sm text-muted-foreground">
+          <p>
+            还没有账号？
+            <Link
+              href="/signup"
+              className="ml-1 text-primary underline-offset-4 hover:underline"
+            >
+              去注册
+            </Link>
+          </p>
           <Link
-            href="/signup"
-            className="ml-1 text-primary underline-offset-4 hover:underline"
+            href="/"
+            data-testid="browse-without-login"
+            className="underline underline-offset-4 hover:text-foreground"
           >
-            去注册
+            随便看看
           </Link>
-        </p>
+        </div>
       </div>
     </FadeIn>
   )
