@@ -6,6 +6,7 @@ import {
   createPublishedItem,
   newTestContext,
   signUpViaUi,
+  submitClaimWithConfirm,
   uniqueUsername,
   type E2EItem,
 } from "./helpers"
@@ -13,8 +14,8 @@ import {
 const T = 30_000
 
 /**
- * 场景 15（第 5 轮）：诚信认领二次确认
- * 点「确认认领」只弹 Dialog，不写库；取消不写；点「我确认」才产生 pickup 行。
+ * 场景 15：诚信认领二次确认（第 7 轮起在**详情页**完成）
+ * 点「我要认领」只弹 Dialog，不写库；取消不写；点「我确认认领」才产生 pickup 行并跳转认领信息。
  */
 test.describe("场景 15：认领二次确认", () => {
   let ctx: TestContext
@@ -43,42 +44,38 @@ test.describe("场景 15：认领二次确认", () => {
     return result.count ?? 0
   }
 
-  test("取消对话框不写库；确认后才产生记录并揭晓", async ({ page }) => {
+  test("取消对话框不写库；确认后立刻进入认领信息并产生记录", async ({
+    page,
+  }) => {
     test.setTimeout(240_000)
-    const username = uniqueUsername("confirm")
-    await signUpViaUi(page, username)
+    const seed = uniqueUsername("confirm")
+    await signUpViaUi(page, seed)
     try {
-      await page.goto("/items/" + item.id + "/claim")
-      await expect(page.getByTestId("pickup-form")).toBeVisible({ timeout: T })
-      await page.getByTestId("pickup-name").fill("王五")
-      await page.getByTestId("pickup-phone").fill("13700137000")
+      await page.goto("/items/" + item.id)
+      const open = page.getByTestId("pickup-open")
+      await expect(open).toBeVisible({ timeout: T })
 
-      // 1) 点提交 → 只弹确认框，DB 仍然没有记录
-      await page.getByTestId("pickup-submit").click()
+      // 1) 点入口 → 只弹确认框，DB 仍然没有记录
+      await open.click()
       const dialog = page.getByTestId("claim-confirm")
       await expect(dialog).toBeVisible({ timeout: T })
       await expect(dialog).toContainText("诚信认领")
       expect(await pickupRows()).toBe(0)
 
-      // 2) 取消 → 关闭，仍无记录，仍在认领页
+      // 2) 取消 → 关闭，仍无记录，仍在详情页
       await page.getByTestId("claim-confirm-cancel").click()
       await expect(dialog).toHaveCount(0, { timeout: T })
       expect(await pickupRows()).toBe(0)
+      await expect(page).toHaveURL(new RegExp("/items/" + item.id + "$"), {
+        timeout: T,
+      })
+
+      // 3) 再点并确认 → 立刻跳到认领信息
+      await submitClaimWithConfirm(page)
       await expect(page).toHaveURL(
         new RegExp("/items/" + item.id + "/claim$"),
         { timeout: T }
       )
-
-      // 3) 再提交并确认 → 产生记录 + 整屏对勾 + 回详情揭晓
-      await page.getByTestId("pickup-submit").click()
-      await expect(dialog).toBeVisible({ timeout: T })
-      await page.getByTestId("claim-confirm-ok").click()
-      await expect(page.getByTestId("claim-success")).toBeVisible({
-        timeout: T,
-      })
-      await page.waitForURL(new RegExp("/items/" + item.id + "$"), {
-        timeout: T,
-      })
       await expect(page.getByTestId("reveal-contact")).toBeVisible({
         timeout: T,
       })
@@ -91,7 +88,7 @@ test.describe("场景 15：认领二次确认", () => {
         .single()
       expect(status.data?.status).toBe("claimed")
     } finally {
-      await cleanupUserByUsername(ctx, username)
+      await cleanupUserByUsername(ctx, seed)
     }
   })
 })

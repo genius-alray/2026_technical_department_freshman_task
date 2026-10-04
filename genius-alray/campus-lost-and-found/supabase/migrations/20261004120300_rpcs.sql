@@ -202,11 +202,10 @@ begin
      where id = p_item_id;
   end if;
 
-  -- 顺手把这次用的姓名/手机号存成「我的信息」，下次认领直接复用（不必再输一遍）
-  update public.profiles
-     set real_name = v_name, phone = v_phone
-   where id = v_uid;
-
+  -- 【第 7 轮起不再写回 profiles】手机号就是账号（唯一），
+  -- 认领时前端直接提交账号里的姓名/手机号；如果这里再写回，
+  -- 一旦认领用了别的号码就会让 auth 邮箱与 profiles.phone 不一致，
+  -- 还会撞 profiles_phone_key 唯一约束。
   return v_id;
 end;
 $$;

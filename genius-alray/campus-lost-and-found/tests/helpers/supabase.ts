@@ -43,15 +43,22 @@ export function createAdminClient(): Client {
   })
 }
 
-/** 造一个合法且唯一的测试手机号（1[3-9] + 9 位） */
-function testPhone(runId: string, seq: number): string {
-  const digits = (runId + seq.toString()).replace(/\D/g, "").slice(-6)
-  return "13" + digits.padStart(9, "0").slice(0, 9)
+/**
+ * 造一个合法且唯一的测试手机号（1[3-9] + 9 位）。
+ * 必须真的唯一：runId 是字母，用「runId + seq」抽数字会让每个 context 的第一个用户
+ * 都得到同一个号码，直接撞 profiles_phone_key。
+ */
+function testPhone(): string {
+  const tail = Math.floor(Math.random() * 1_000_000_000)
+  return "13" + tail.toString().padStart(9, "0")
 }
 
 export type TestUser = {
   id: string
+  /** 内部标识（用于生成邮箱/日志），第 7 轮起账号是手机号 */
   username: string
+  /** 注册时填的真实姓名（认领默认用它） */
+  realName: string
   phone: string
   email: string
   password: string
@@ -90,14 +97,15 @@ export function createTestContext(): TestContext {
     // 【第 7 轮】账号体系改成「手机号 + 密码」：内部邮箱由手机号派生，
     // profiles 的 real_name / phone 是 NOT NULL，所以创建测试用户必须带上这两项。
     const username = ("u_" + safe + "_" + runId + seq).slice(0, 20)
-    const phone = testPhone(runId, seq)
+    const realName = ("测试" + safe.slice(0, 4)).slice(0, 20)
+    const phone = testPhone()
     const email = phone + "@" + AUTH_EMAIL_DOMAIN
 
     const created = await admin.auth.admin.createUser({
       email,
       password: TEST_PASSWORD,
       email_confirm: true,
-      user_metadata: { real_name: "测试" + safe.slice(0, 4), phone },
+      user_metadata: { real_name: realName, phone },
     })
     if (created.error || !created.data?.user) {
       throw new Error(
@@ -119,6 +127,7 @@ export function createTestContext(): TestContext {
     const testUser: TestUser = {
       id: created.data.user.id,
       username,
+      realName,
       phone,
       email,
       password: TEST_PASSWORD,

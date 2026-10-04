@@ -52,8 +52,6 @@ test.describe("场景 10：认领即归属", () => {
       await expect(
         claimer.getByRole("heading", { name: "认领物品" })
       ).toBeVisible({ timeout: T })
-      await claimer.getByTestId("pickup-name").fill("李四")
-      await claimer.getByTestId("pickup-phone").fill("13700137000")
       await submitClaimWithConfirm(claimer)
       // D-2 修复后：整屏对勾必须真的可见
       await expect(claimer.getByTestId("claim-success")).toBeVisible({

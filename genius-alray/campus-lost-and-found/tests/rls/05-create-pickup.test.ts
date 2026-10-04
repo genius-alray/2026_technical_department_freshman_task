@@ -15,7 +15,7 @@ import {
 /**
  * 矩阵 6（第 4 轮）：create_pickup —— 认领即归属
  * - 成功即把物品置为 claimed
- * - 别人再认领 → P0001；拾主认领自己的 → 42501
+ * - 第 7 轮起：别人**也可以**认领同一物品（多人认领）；拾主认领自己的 → 42501
  * - 同一认领人重复提交 = 更新同一条记录（行数不增加）
  * - 已撤单 → P0001；不存在 → P0002
  */
@@ -105,7 +105,7 @@ describe("矩阵 6：create_pickup（认领即归属）", () => {
     expect(row.data?.claimed_at).not.toBeNull()
   })
 
-  it("矩阵 6：别人再认领 → P0001「该物品已被认领」", async () => {
+  it("矩阵 6（第 7 轮）：别人也能认领已被认领的物品（多人认领，线下协商）", async () => {
     const item = await freshItem()
     const first = await createPickupRaw(picker, item.id, "李四", "13900139000")
     expect(first.error).toBeNull()
@@ -116,9 +116,8 @@ describe("矩阵 6：create_pickup（认领即归属）", () => {
       "王五",
       "13700137000"
     )
-    expect(secondAttempt.error?.code).toBe("P0001")
-    expect(secondAttempt.error?.message).toContain("该物品已被认领")
-    expect(await pickupCount(ctx, item.id)).toBe(1)
+    expect(secondAttempt.error).toBeNull()
+    expect(await pickupCount(ctx, item.id)).toBe(2)
     expect(await itemStatus(ctx, item.id)).toBe("claimed")
   })
 
@@ -167,13 +166,13 @@ describe("矩阵 6：create_pickup（认领即归属）", () => {
     expect(result.error?.code).toBe("P0002")
   })
 
-  it("第 5 轮：认领会把姓名/手机号写回 profiles（下次可直接预填）", async () => {
-    const fresh = await freshItem("写回个人信息")
-    // 先把 picker 的 profile 清空，确保是「认领写回」而不是残留
-    await ctx.admin
+  it("第 7 轮：认领不会改动账号里的姓名与手机号（手机号即账号，唯一）", async () => {
+    const fresh = await freshItem("认领不改账号")
+    const before = await ctx.admin
       .from("profiles")
-      .update({ real_name: "占位姓名", phone: "13900000000" })
+      .select("real_name, phone")
       .eq("id", picker.id)
+      .single()
 
     const result = await createPickupRaw(
       picker,
@@ -183,21 +182,21 @@ describe("矩阵 6：create_pickup（认领即归属）", () => {
     )
     expect(result.error).toBeNull()
 
-    const profile = await ctx.admin
+    const after = await ctx.admin
       .from("profiles")
       .select("real_name, phone")
       .eq("id", picker.id)
       .single()
-    expect(profile.data?.real_name).toBe("王五")
-    expect(profile.data?.phone).toBe("13700137000")
+    expect(after.data?.real_name).toBe(before.data?.real_name)
+    expect(after.data?.phone).toBe(before.data?.phone)
 
-    // 与 pickups 行保持一致
+    // 认领记录本身用提交的姓名/手机号
     const pickup = await ctx.admin
       .from("pickups")
       .select("picker_name, picker_phone")
       .eq("id", result.data as string)
       .single()
-    expect(pickup.data?.picker_name).toBe(profile.data?.real_name)
-    expect(pickup.data?.picker_phone).toBe(profile.data?.phone)
+    expect(pickup.data?.picker_name).toBe("王五")
+    expect(pickup.data?.picker_phone).toBe("13700137000")
   })
 })

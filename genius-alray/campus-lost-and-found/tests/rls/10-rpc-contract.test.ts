@@ -36,7 +36,7 @@ describe("RPC 契约守卫：只给必填参数也能被解析", () => {
       const result = await user.client.rpc("get_app_config", {})
       expectResolved(result.error)
       expect(result.error).toBeNull()
-      expect(result.data?.[0]?.max_photos).toBe(5)
+      expect(result.data?.[0]?.max_photos).toBe(3)
       expect(result.data?.[0]?.page_size).toBe(20)
     } finally {
       await ctx.cleanup()

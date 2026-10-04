@@ -251,8 +251,6 @@ test.describe("场景 8：UI 简化要求", () => {
         timeout: T,
       })
       await expect(page.getByTestId("pickup-form")).toBeVisible({ timeout: T })
-      await page.getByTestId("pickup-name").fill("李四")
-      await page.getByTestId("pickup-phone").fill("13700137000")
       await submitClaimWithConfirm(page)
       // D-2 修复后：整屏对勾必须真的可见
       await expect(page.getByTestId("claim-success")).toBeVisible({

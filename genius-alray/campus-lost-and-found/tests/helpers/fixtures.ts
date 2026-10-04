@@ -203,8 +203,8 @@ export type PickupRow = { id: string }
 export async function createPickup(
   picker: TestUser,
   itemId: string,
-  name = "张三",
-  phone = "13800138000"
+  name = picker.realName,
+  phone = picker.phone
 ): Promise<string> {
   const result = (await picker.client.rpc("create_pickup", {
     p_item_id: itemId,

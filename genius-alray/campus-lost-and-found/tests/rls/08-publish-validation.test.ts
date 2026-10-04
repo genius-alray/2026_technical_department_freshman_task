@@ -70,8 +70,8 @@ describe("矩阵 9：发布 RPC 的校验", () => {
 
   it("矩阵 9：0 张或超过 max_photos → 22023", async () => {
     const config = await owner.client.rpc("get_app_config", {})
-    const maxPhotos = config.data?.[0]?.max_photos ?? 5
-    expect(maxPhotos).toBe(5)
+    const maxPhotos = config.data?.[0]?.max_photos ?? 3
+    expect(maxPhotos).toBe(3)
 
     const none = await publishItemRaw(owner, {
       title: "没有照片",

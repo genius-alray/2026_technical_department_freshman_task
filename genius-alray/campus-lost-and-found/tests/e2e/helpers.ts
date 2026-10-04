@@ -20,6 +20,7 @@ import {
 
 export const E2E_PASSWORD = TEST_PASSWORD
 
+/** 测试账号的「种子」：第 7 轮起账号是手机号，这里只用来派生手机号与邮箱 */
 export function uniqueUsername(prefix: string): string {
   const safe = prefix
     .toLowerCase()
@@ -31,26 +32,38 @@ export function uniqueUsername(prefix: string): string {
   )
 }
 
+/** 由种子派生一个稳定、合法、够唯一的 11 位手机号 */
+export function phoneFor(seed: string): string {
+  let h = 2166136261
+  for (const ch of seed) h = Math.imul(h ^ ch.charCodeAt(0), 16777619)
+  const tail = (h >>> 0) % 1_000_000_000
+  return "13" + tail.toString().padStart(9, "0")
+}
+
+/** 注册：真实姓名 + 手机号 + 密码 + 勾选同意条款 */
 export async function signUpViaUi(
   page: Page,
-  username: string,
+  seed: string,
   password = E2E_PASSWORD
 ): Promise<void> {
   await page.goto("/signup")
-  await page.fill("#username", username)
+  await page.fill("#realName", "测试用户")
+  await page.fill("#phone", phoneFor(seed))
   await page.fill("#password", password)
   await page.fill("#confirmPassword", password)
+  await page.check('input[name="agree"]')
   await page.getByRole("button", { name: "注册并登录" }).click()
   await expect(page).not.toHaveURL(/\/signup/, { timeout: 30_000 })
 }
 
+/** 登录：手机号 + 密码 */
 export async function signInViaUi(
   page: Page,
-  username: string,
+  seed: string,
   password = E2E_PASSWORD
 ): Promise<void> {
   await page.goto("/login")
-  await page.fill("#username", username)
+  await page.fill("#phone", phoneFor(seed))
   await page.fill("#password", password)
   await page.getByRole("button", { name: "登录", exact: true }).click()
   await expect(page).not.toHaveURL(/\/login/, { timeout: 30_000 })
@@ -61,9 +74,7 @@ export async function uploadPhoto(
   page: Page,
   name = "photo.png"
 ): Promise<void> {
-  const trigger = page
-    .getByRole("button", { name: /选择照片|继续添加|继续拍照|补一张/ })
-    .first()
+  const trigger = page.getByTestId("photo-add")
   await expect(trigger).toBeVisible({ timeout: 30_000 })
   const [chooser] = await Promise.all([
     page.waitForEvent("filechooser", { timeout: 30_000 }),
@@ -151,15 +162,16 @@ export function newTestContext(): TestContext {
 }
 
 /**
- * 第 5 轮：认领改为「先弹诚信确认，再写入」。
- * 点「确认认领」→ 等 Dialog → 点「我确认」。
+ * 认领：第 7 轮起**在详情页**完成 —— 点「我要认领」→ 弹「诚信认领」→「我确认认领」
+ * → 立刻跳到「认领信息」独立一屏。姓名/手机号直接用账号里的，不再有输入框。
  */
 export async function submitClaimWithConfirm(page: Page): Promise<void> {
-  await page.getByTestId("pickup-submit").click()
+  await page.getByTestId("pickup-open").click()
   await expect(page.getByTestId("claim-confirm")).toBeVisible({
     timeout: 30_000,
   })
   await page.getByTestId("claim-confirm-ok").click()
+  await expect(page.getByTestId("claim-guide")).toBeVisible({ timeout: 30_000 })
 }
 
 /**
@@ -169,14 +181,17 @@ export async function submitClaimWithConfirm(page: Page): Promise<void> {
  */
 export async function cleanupUserByUsername(
   ctx: TestContext,
-  username: string
+  seed: string
 ): Promise<void> {
-  const profile = await ctx.admin
-    .from("profiles")
-    .select("id")
-    .eq("id", username)
-    .maybeSingle()
-  const userId = profile.data?.id
+  const email =
+    phoneFor(seed) +
+    "@" +
+    (process.env.NEXT_PUBLIC_AUTH_EMAIL_DOMAIN ?? "campus.local")
+  const listed = await ctx.admin.auth.admin.listUsers({
+    page: 1,
+    perPage: 200,
+  })
+  const userId = listed.data?.users.find((user) => user.email === email)?.id
   if (!userId) return
 
   try {

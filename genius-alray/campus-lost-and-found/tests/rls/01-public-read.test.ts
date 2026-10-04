@@ -128,13 +128,30 @@ describe("矩阵 1/3：published / claimed 可读，withdrawn 仅拾主可见", 
     expect(claimedImages.error).toBeNull()
   })
 
-  it("矩阵 3：anon 读 found_items / found_item_images 拿不到任何行", async () => {
-    const items = await ctx.anon.from("found_items").select("id, title")
-    expect(items.data ?? []).toEqual([])
-    if (items.error) expect(items.error.code).toBe("42501")
+  it("矩阵 3：未登录（anon）能读失物墙，但读不到 contact / location", async () => {
+    // 第 7 轮起首屏信息流对未登录开放
+    const items = await ctx.anon
+      .from("found_items")
+      .select("id, title, status")
+      .eq("id", publishedId)
+    expect(items.error).toBeNull()
+    expect(items.data?.length).toBe(1)
 
-    const images = await ctx.anon.from("found_item_images").select("id")
-    expect(images.data ?? []).toEqual([])
-    if (images.error) expect(images.error.code).toBe("42501")
+    const images = await ctx.anon
+      .from("found_item_images")
+      .select("id")
+      .eq("found_item_id", publishedId)
+    expect(images.error).toBeNull()
+
+    // 撤单的物品对 anon 不可见
+    const withdrawn = await ctx.anon
+      .from("found_items")
+      .select("id")
+      .eq("id", withdrawnId)
+    expect(withdrawn.data ?? []).toEqual([])
+
+    // 机密列依旧碰不得
+    const secret = await ctx.anon.from("found_items").select("contact")
+    expect(secret.error?.code).toBe("42501")
   })
 })

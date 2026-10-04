@@ -6,15 +6,26 @@ import {
 } from "../helpers/supabase"
 
 /**
- * 第 5 轮新增：profiles 的「我的信息」（real_name / phone）
+ * profiles（个人信息 / 账号）
  * - 可读列：id, real_name, phone, created_at, updated_at
  * - 可写列：real_name, phone（其余列 42501）
  * - RLS：只能读/改自己那一行（profiles_select_own / profiles_update_own）
- * - CHECK：姓名 2-20 字、手机号 ^[0-9+\- ]{6,20}$（23514）
+ * - CHECK（第 7 轮）：姓名 2-20 字；手机号必须是中国大陆 11 位手机号且唯一
+ * - 注册即必填：real_name / phone 都是 NOT NULL
  */
 const PROFILE_COLUMNS = "id, real_name, phone, created_at, updated_at"
 
-describe("第 5 轮：profiles 个人信息列级与行级权限", () => {
+/** 造一个没被占用的测试手机号 */
+function freshPhone(): string {
+  return (
+    "13" +
+    Math.floor(Math.random() * 1_000_000_000)
+      .toString()
+      .padStart(9, "0")
+  )
+}
+
+describe("profiles：个人信息的列级与行级权限", () => {
   let ctx: TestContext
   let alice: TestUser
   let bob: TestUser
@@ -29,7 +40,7 @@ describe("第 5 轮：profiles 个人信息列级与行级权限", () => {
     await ctx.cleanup()
   })
 
-  it("初始状态：姓名与手机号为 null，公开列可读", async () => {
+  it("注册即写入：姓名与手机号都已存在且可读", async () => {
     const result = await alice.client
       .from("profiles")
       .select(PROFILE_COLUMNS)
@@ -37,23 +48,23 @@ describe("第 5 轮：profiles 个人信息列级与行级权限", () => {
       .single()
 
     expect(result.error).toBeNull()
+    expect(result.data?.real_name).toBe(alice.realName)
     expect(result.data?.phone).toBe(alice.phone)
-    expect(result.data?.real_name).toBeNull()
-    expect(result.data?.phone).toBeNull()
     expect(result.data?.created_at).toBeTruthy()
   })
 
   it("可以更新自己的 real_name / phone，并读回", async () => {
+    const nextPhone = freshPhone()
     const updated = await alice.client
       .from("profiles")
-      .update({ real_name: "张三", phone: "13800138000" })
+      .update({ real_name: "张三", phone: nextPhone })
       .eq("id", alice.id)
       .select(PROFILE_COLUMNS)
       .single()
 
     expect(updated.error).toBeNull()
     expect(updated.data?.real_name).toBe("张三")
-    expect(updated.data?.phone).toBe("13800138000")
+    expect(updated.data?.phone).toBe(nextPhone)
 
     const readBack = await alice.client
       .from("profiles")
@@ -61,7 +72,7 @@ describe("第 5 轮：profiles 个人信息列级与行级权限", () => {
       .eq("id", alice.id)
       .single()
     expect(readBack.data?.real_name).toBe("张三")
-    expect(readBack.data?.phone).toBe("13800138000")
+    expect(readBack.data?.phone).toBe(nextPhone)
   })
 
   it("RLS：读不到别人的 profile，也改不动别人的行", async () => {
@@ -86,7 +97,7 @@ describe("第 5 轮：profiles 个人信息列级与行级权限", () => {
       .select("real_name")
       .eq("id", bob.id)
       .single()
-    expect(bobRow.data?.real_name).toBeNull()
+    expect(bobRow.data?.real_name).toBe(bob.realName)
   })
 
   it("列级：未授予的时刻列不可写（42501）", async () => {
@@ -99,7 +110,7 @@ describe("第 5 轮：profiles 个人信息列级与行级权限", () => {
     expect(result.error?.code).toBe("42501")
   })
 
-  it("CHECK 约束：姓名过短/过长、手机号格式非法都被数据库拒绝（23514）", async () => {
+  it("CHECK 约束：姓名长度与手机号格式都被数据库拒绝（23514）", async () => {
     const badName = await alice.client
       .from("profiles")
       .update({ real_name: "张" })
@@ -107,7 +118,13 @@ describe("第 5 轮：profiles 个人信息列级与行级权限", () => {
       .select("id")
     expect(badName.error?.code).toBe("23514")
 
-    for (const phone of ["abc", "12345", "1".repeat(21)]) {
+    for (const phone of [
+      "abc",
+      "12345",
+      "1".repeat(21),
+      "+86 138-0013-8000",
+      "23800138000",
+    ]) {
       const badPhone = await alice.client
         .from("profiles")
         .update({ phone })
@@ -116,14 +133,21 @@ describe("第 5 轮：profiles 个人信息列级与行级权限", () => {
       expect(badPhone.error?.code, phone).toBe("23514")
     }
 
-    // 合法值仍然可写（+ - 空格也接受）
+    // 手机号唯一：换成别人的号码会被拒
+    const duplicate = await alice.client
+      .from("profiles")
+      .update({ phone: bob.phone })
+      .eq("id", alice.id)
+      .select("id")
+    expect(duplicate.error?.code).toBe("23505")
+
+    // 合法值仍然可写
     const ok = await alice.client
       .from("profiles")
-      .update({ phone: "+86 138-0013-8000" })
+      .update({ phone: freshPhone() })
       .eq("id", alice.id)
       .select("phone")
       .single()
     expect(ok.error).toBeNull()
-    expect(ok.data?.phone).toBe("+86 138-0013-8000")
   })
 })
