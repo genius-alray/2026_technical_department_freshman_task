@@ -20,9 +20,12 @@ function toErrors(messages?: string[]) {
 export function ProfileForm({
   defaultName,
   defaultPhone,
+  nextPath = null,
 }: {
   defaultName: string
   defaultPhone: string
+  /** 从认领流程进来时保存后回到这里（例如 /items/xxx） */
+  nextPath?: string | null
 }) {
   const router = useRouter()
   const [state, formAction, pending] = useActionState(
@@ -35,11 +38,11 @@ export function ProfileForm({
   useEffect(() => {
     if (state.ok) {
       toast.add({ type: "success", title: "已保存" })
-      router.replace("/me")
+      router.replace(nextPath ?? "/me")
       return
     }
     if (state.formError) toast.add({ type: "error", title: state.formError })
-  }, [state, router])
+  }, [state, router, nextPath])
 
   const nameInvalid = Boolean(state.fieldErrors?.realName)
   const phoneInvalid = Boolean(state.fieldErrors?.phone)

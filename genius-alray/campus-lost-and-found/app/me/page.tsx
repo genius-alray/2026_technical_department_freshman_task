@@ -130,11 +130,11 @@ function ProfileEntry({ profile }: { profile: Profile | null }) {
     >
       <span className="flex min-w-0 flex-col">
         <span className="truncate text-sm font-medium">
-          {complete ? name + " · " + phone : "填写个人信息"}
+          {complete ? name : "填写个人信息"}
         </span>
-        {complete ? null : (
-          <span className="text-xs text-muted-foreground">认领时要用</span>
-        )}
+        <span className="text-xs text-muted-foreground">
+          {complete ? "已保存，认领时自动带上" : "认领时要用"}
+        </span>
       </span>
       <ChevronRightIcon
         className="size-4 shrink-0 text-muted-foreground"

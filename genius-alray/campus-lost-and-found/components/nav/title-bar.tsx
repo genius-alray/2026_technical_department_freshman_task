@@ -39,7 +39,7 @@ const ROUTES: Array<(pathname: string) => TitleBarConfig | null> = [
     const m = p.match(/^\/items\/([^/]+)\/claim$/)
     return m
       ? {
-          title: "认领物品",
+          title: "认领信息",
           backHref: "/items/" + m[1],
           backLabel: "返回物品",
           backTestId: "pickup-cancel",

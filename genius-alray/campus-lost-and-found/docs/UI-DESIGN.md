@@ -2,6 +2,24 @@
 
 逐轮收紧：**让操作尽可能少，让每一屏尽可能空，让空的一屏居中，让框架整齐划一。**
 
+## 0.000 第 6 轮（**当前有效**：认领复用个人信息 + 电话/位置统一组件）
+
+1. **认领不再有表单屏**。详情页点「我要认领」：
+   - 没填过个人信息 → 弹「**需要补充个人信息才能认领**」→「去填写」跳 `/me/profile?next=/items/<id>`，
+     **保存后自动回到该物品页**（`?next=` 只接受站内相对路径）。
+   - 填过 → 直接弹「**诚信认领**」确认框，里面展示自己的**姓名 + 手机号（电话组件）**与诚信文案；
+     「我确认认领」才提交。
+   - 提交成功 → 整屏对勾 → 进入**认领信息独立一屏** `/items/[id]/claim`（认领指引 3 步 + 拾主联系方式/位置 + 我的认领信息）。
+   - 已认领的本人再回详情页 → 按钮变成「**查看认领信息**」。
+2. **电话 / 位置必须用统一组件**，不要写裸文本：
+   - `components/contact/phone-link.tsx` `<PhoneLink phone />`：**电话图标 + 号码，蓝色**，点击先二次确认再 `tel:` 拨号。
+   - `components/contact/location-link.tsx` `<LocationLink label lat lng />`：**定位图标 + 位置，蓝色**，
+     点击先二次确认再用**高德**打开（有坐标走标记点，只有描述走搜索）。
+   - 坐标是浏览器给的 **WGS84**，展示到高德前在 `lib/geo.ts` 里转成 **GCJ-02**（否则偏移几百米）。
+3. 认领信息屏的 testid：`claim-guide` / `pickup-revealed` / `reveal-contact` / `reveal-location` /
+   `claim-info` / `claim-back-item`；组件的 testid：`phone-link`、`phone-call-dialog`、`phone-call-confirm`、
+   `phone-call-cancel`、`location-link`、`map-open-dialog`、`map-open-confirm`、`map-open-cancel`。
+
 ## 0.00 第 5 轮新增（**当前有效**，与前面几轮冲突时以本节为准）
 
 1. **标题栏由 layout 统一提供**：`components/nav/title-bar.tsx` + `app/template.tsx`。

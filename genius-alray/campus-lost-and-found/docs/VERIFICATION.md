@@ -30,15 +30,15 @@
 
 ## 2. 结论总览
 
-| 层          | 命令                                                      | 结果                                                                                              |
-| ----------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| 安全矩阵    | pnpm test:rls                                             | **13 files / 78 tests 全绿**（第 5 轮后，含 profiles 个人信息列级/行级权限）                      |
-| 单元 + 组件 | pnpm test:unit                                            | **5 files / 45 tests 全绿**（含 profileSchema / photoAdviceSchema / profiles 封装）              |
+| 层          | 命令                                                      | 结果                                                                                                             |
+| ----------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| 安全矩阵    | pnpm test:rls                                             | **13 files / 78 tests 全绿**（第 5 轮后，含 profiles 个人信息列级/行级权限）                                     |
+| 单元 + 组件 | pnpm test:unit                                            | **5 files / 45 tests 全绿**（含 profileSchema / photoAdviceSchema / profiles 封装）                              |
 | E2E         | pnpm test:e2e                                             | **24 passed（1.8m）**：场景 1-16（统一标题栏、个人信息、诚信确认、拍照判断时机、scroll-snap 轮播、/me 只做导航） |
-| 静态检查    | eslint --max-warnings=0 / tsc --noEmit / prettier --check | 0 error / 0 warning；tests/** 对 tsc 0 错误                                                       |
-| 全量验收    | pnpm verify                                               | **EXIT=0**（typecheck + lint + unit 45 + rls 78 + e2e 24）                                        |
-| 生产构建    | pnpm build                                                | **EXIT=0**，Compiled successfully                                                                 |
-| 真实模型    | pnpm test:live                                            | **3 passed / 0 failed（EXIT=0，31s）**，StepFun step-5-preview                                    |
+| 静态检查    | eslint --max-warnings=0 / tsc --noEmit / prettier --check | 0 error / 0 warning；tests/** 对 tsc 0 错误                                                                      |
+| 全量验收    | pnpm verify                                               | **EXIT=0**（typecheck + lint + unit 45 + rls 78 + e2e 24）                                                       |
+| 生产构建    | pnpm build                                                | **EXIT=0**，Compiled successfully                                                                                |
+| 真实模型    | pnpm test:live                                            | **3 passed / 0 failed（EXIT=0，31s）**，StepFun step-5-preview                                                   |
 
 产品缺陷：历史 3 个全部闭环 —— D-1（发布 RPC 参数契约）、C-1（我的查询收窄）、D-2（认领整屏对勾被服务端重定向抢跑，第 5 轮已修复并复验）；
 第 5 轮**未发现新的产品缺陷**。
@@ -373,57 +373,58 @@
 2. ~~D-2 的竞态……~~ **已在 9.4.1 修复**：认领页不再被服务端重定向抢跑，6 条认领用例都改回 `toBeVisible` 并通过。
 3. 相册滑动用 mouse 事件覆盖；未覆盖真实触摸手势（touch）与多指场景。
 4. 未验证 `withdrawn` 物品对「我的认领」列表的影响（认领记录仍在，但物品对非 owner 不可读时会显示「不可见」占位，属设计内行为，见 `app/me/page.tsx:172`）。
+
 ---
 
 ## 10. 第 5 轮验证（task-24）
 
 ### 10.1 要求 → 验证方式
 
-| 要求 | 验证方式（可执行断言） |
-|---|---|
-| 标题栏统一到 layout，页面不再自绘 | E2E 场景 16：`/`、`/publish`、`/me`、`/items/[id]` 均有且只有 1 个 `header`，它带 `data-testid="title-bar"` 且位于 `main` 内；`/login`、`/signup` 无 `title-bar`、无 `header` |
-| 标题/h1 按路由，详情页用物品名覆盖 | 场景 16：`/`=失物墙、`/publish`=发布招领、`/me`=我的；`/items/[id]` 的 h1 最终等于物品名称（`PageTitle` 覆盖，给足等待） |
-| 返回控件 testid 由路由决定 | 场景 16：详情页 `item-back`、认领页 `pickup-cancel`；首页有 `me-entry` 且无返回控件 |
-| 个人信息闭环 | 场景 14：`/me` 空态「填写个人信息」→ `/me/profile` 保存 → 回 `/me` 显示「张三 · 13800138000」→ DB `profiles.real_name/phone` 落库 |
-| 认领屏预填 + 写回 | 场景 14：已填者认领屏预填且提示「已保存，可直接认领」；未填者为空并提示「填一次，以后认领直接用」；认领后 `profiles` 与 `pickups` 行一致（`create_pickup` 服务端写回） |
-| 诚信认领二次确认 | 场景 15：点 `pickup-submit` 只弹 `claim-confirm`（文案「诚信认领」）且 DB 仍 0 行；`claim-confirm-cancel` 关闭后仍 0 行且仍在认领页；点 `claim-confirm-ok` 才产生 1 行 + `claim-success` + 回详情揭晓 + 物品 `claimed` |
-| 拍照屏只在「下一步」判断一次 | 场景 13：上传时不再出现建议卡；点「下一步」先 `photo-check-loading`；<2 张 → `photo-advice-dialog`（`photo-advice-retake` 留在本屏 / `photo-advice-skip` 进第 2 屏）；>=2 张 → 不弹框直接进第 2 屏 |
-| 第 2 屏全屏加载不渲染输入框 | 场景 13 / 场景 1：`analyze-loading` 可见时同步数 `#title` / `#description` 计数为 0 |
-| 详情页原生 scroll-snap 轮播 | 场景 12：`gallery-track.scrollLeft = clientWidth` 驱动 → `gallery-counter` 1/2→2/2 且 `gallery-dot-1` 的 `aria-current=true`；点圆点跳回 1/2；`scrollWidth - innerWidth <= 1` |
-| `/me` 只做导航 + 退出登录 | 场景 8 第 3 条：默认 tab 只见「我的发布」；切「我的认领」后 `me-pickup-card` 可见且含物品名，**卡片内不含认领人姓名/手机号**；点整卡进入 `/items/{id}` |
-| profiles 列级/行级权限 | RLS 13-profiles：可读列 `id, username, real_name, phone, created_at, updated_at`；只读/改自己那行；未授予列（`created_at`）写入 42501；姓名过短 / 手机号非法 → 23514 |
-| profiles 写回 | RLS 05：认领后 `profiles.real_name/phone` 与 `pickups.picker_name/picker_phone` 一致 |
-| 新 zod 契约 | 单测：`profileSchema`（姓名 2-20、手机号 `^[0-9+\- ]{6,20}$`、trim）、`photoAdviceSchema`（`verdict` 枚举 + reason 1-30，不再是 boolean 字段） |
+| 要求                               | 验证方式（可执行断言）                                                                                                                                                                                                 |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 标题栏统一到 layout，页面不再自绘  | E2E 场景 16：`/`、`/publish`、`/me`、`/items/[id]` 均有且只有 1 个 `header`，它带 `data-testid="title-bar"` 且位于 `main` 内；`/login`、`/signup` 无 `title-bar`、无 `header`                                          |
+| 标题/h1 按路由，详情页用物品名覆盖 | 场景 16：`/`=失物墙、`/publish`=发布招领、`/me`=我的；`/items/[id]` 的 h1 最终等于物品名称（`PageTitle` 覆盖，给足等待）                                                                                               |
+| 返回控件 testid 由路由决定         | 场景 16：详情页 `item-back`、认领页 `pickup-cancel`；首页有 `me-entry` 且无返回控件                                                                                                                                    |
+| 个人信息闭环                       | 场景 14：`/me` 空态「填写个人信息」→ `/me/profile` 保存 → 回 `/me` 显示「张三 · 13800138000」→ DB `profiles.real_name/phone` 落库                                                                                      |
+| 认领屏预填 + 写回                  | 场景 14：已填者认领屏预填且提示「已保存，可直接认领」；未填者为空并提示「填一次，以后认领直接用」；认领后 `profiles` 与 `pickups` 行一致（`create_pickup` 服务端写回）                                                 |
+| 诚信认领二次确认                   | 场景 15：点 `pickup-submit` 只弹 `claim-confirm`（文案「诚信认领」）且 DB 仍 0 行；`claim-confirm-cancel` 关闭后仍 0 行且仍在认领页；点 `claim-confirm-ok` 才产生 1 行 + `claim-success` + 回详情揭晓 + 物品 `claimed` |
+| 拍照屏只在「下一步」判断一次       | 场景 13：上传时不再出现建议卡；点「下一步」先 `photo-check-loading`；<2 张 → `photo-advice-dialog`（`photo-advice-retake` 留在本屏 / `photo-advice-skip` 进第 2 屏）；>=2 张 → 不弹框直接进第 2 屏                     |
+| 第 2 屏全屏加载不渲染输入框        | 场景 13 / 场景 1：`analyze-loading` 可见时同步数 `#title` / `#description` 计数为 0                                                                                                                                    |
+| 详情页原生 scroll-snap 轮播        | 场景 12：`gallery-track.scrollLeft = clientWidth` 驱动 → `gallery-counter` 1/2→2/2 且 `gallery-dot-1` 的 `aria-current=true`；点圆点跳回 1/2；`scrollWidth - innerWidth <= 1`                                          |
+| `/me` 只做导航 + 退出登录          | 场景 8 第 3 条：默认 tab 只见「我的发布」；切「我的认领」后 `me-pickup-card` 可见且含物品名，**卡片内不含认领人姓名/手机号**；点整卡进入 `/items/{id}`                                                                 |
+| profiles 列级/行级权限             | RLS 13-profiles：可读列 `id, username, real_name, phone, created_at, updated_at`；只读/改自己那行；未授予列（`created_at`）写入 42501；姓名过短 / 手机号非法 → 23514                                                   |
+| profiles 写回                      | RLS 05：认领后 `profiles.real_name/phone` 与 `pickups.picker_name/picker_phone` 一致                                                                                                                                   |
+| 新 zod 契约                        | 单测：`profileSchema`（姓名 2-20、手机号 `^[0-9+\- ]{6,20}$`、trim）、`photoAdviceSchema`（`verdict` 枚举 + reason 1-30，不再是 boolean 字段）                                                                         |
 
 ### 10.2 命令与结果
 
-| 命令 | 结果 | 计数 |
-|---|---|---|
-| `pnpm typecheck` | EXIT=0 | 0 错误 |
-| `pnpm verify` | **EXIT=0** | unit **5 files / 45 tests**；rls **13 files / 78 tests**；e2e **24 passed / 0 failed（1.9m）** |
-| `pnpm build` | **EXIT=0** | Compiled successfully |
-| `pnpm test:live` | **EXIT=0** | **3 passed / 0 failed（31s）**：vision 单张 / review / vision 多张 |
-| `eslint tests --max-warnings=0` / `prettier --check` | 通过 | 0 warning / 格式一致 |
+| 命令                                                 | 结果       | 计数                                                                                           |
+| ---------------------------------------------------- | ---------- | ---------------------------------------------------------------------------------------------- |
+| `pnpm typecheck`                                     | EXIT=0     | 0 错误                                                                                         |
+| `pnpm verify`                                        | **EXIT=0** | unit **5 files / 45 tests**；rls **13 files / 78 tests**；e2e **24 passed / 0 failed（1.9m）** |
+| `pnpm build`                                         | **EXIT=0** | Compiled successfully                                                                          |
+| `pnpm test:live`                                     | **EXIT=0** | **3 passed / 0 failed（31s）**：vision 单张 / review / vision 多张                             |
+| `eslint tests --max-warnings=0` / `prettier --check` | 通过       | 0 warning / 格式一致                                                                           |
 
 ### 10.3 对抗式反证（临时探针实跑，跑完已删除）
 
-| 反证 | 做法 | 结果 | 结论 |
-|---|---|---|---|
-| 取消确认不写库 | 点提交 → 取消 → 断言已有 1 行 pickup（`test.fail`） | **如预期失败** | 取消后确实 0 行 |
-| 登录页无标题栏 | 断言 `/login` 有 1 个 `title-bar`（`test.fail`） | **如预期失败** | 扁平认证页确实没有标题栏 |
-| 2 张不弹补拍框 | 2 张 →「下一步」→ 断言 `photo-advice-dialog` 可见（`test.fail`） | **如预期失败** | 2 张确实直接进第 2 屏 |
-| 1 张留在拍照屏 | 1 张 →「下一步」→ 断言 `#title` 可见（`test.fail`） | **如预期失败** | 1 张确实先弹对话框、不进第 2 屏 |
-| 认领写回 profiles | 认领后断言 `profiles.real_name` 仍为 null（`test.fail`） | **如预期失败** | 服务端确实把姓名/手机号写回了 profiles |
-| `/me` 列表只导航 | 断言 `me-pickup-card` 内含认领人手机号（`test.fail`） | **如预期失败** | 卡片确实只有标题 + 状态，没有个人信息 |
+| 反证              | 做法                                                             | 结果           | 结论                                   |
+| ----------------- | ---------------------------------------------------------------- | -------------- | -------------------------------------- |
+| 取消确认不写库    | 点提交 → 取消 → 断言已有 1 行 pickup（`test.fail`）              | **如预期失败** | 取消后确实 0 行                        |
+| 登录页无标题栏    | 断言 `/login` 有 1 个 `title-bar`（`test.fail`）                 | **如预期失败** | 扁平认证页确实没有标题栏               |
+| 2 张不弹补拍框    | 2 张 →「下一步」→ 断言 `photo-advice-dialog` 可见（`test.fail`） | **如预期失败** | 2 张确实直接进第 2 屏                  |
+| 1 张留在拍照屏    | 1 张 →「下一步」→ 断言 `#title` 可见（`test.fail`）              | **如预期失败** | 1 张确实先弹对话框、不进第 2 屏        |
+| 认领写回 profiles | 认领后断言 `profiles.real_name` 仍为 null（`test.fail`）         | **如预期失败** | 服务端确实把姓名/手机号写回了 profiles |
+| `/me` 列表只导航  | 断言 `me-pickup-card` 内含认领人手机号（`test.fail`）            | **如预期失败** | 卡片确实只有标题 + 状态，没有个人信息  |
 
 ### 10.4 本轮测试侧修正（非产品问题）
 
-| # | 现象 | 根因 | 处理 |
-|---|---|---|---|
-| T-10 | 场景 16 断言 `main > header` 计数 1 失败（实际 0） | 标题栏在 `template.tsx` 的 `PageTransition` 包装里，不是 `main` 的直接子元素 | 改为断言整页 `header` 计数 1、`header[data-testid=title-bar]` 计数 1、`main header` 计数 1 |
-| T-11 | 场景 8 第 3 条断言「王五 不可见」失败 | 第 5 轮起 `/me` 顶部「我的信息」会显示**本人**的姓名 · 手机号（设计内），而 `createPickup` 又把认领姓名写回 profile | 断言范围收窄到 `me-pickup-card`：卡片内不得出现姓名/手机号 |
-| T-12 | 场景 1/9/13/8 仍在等 `photo-advice-ok/-retake` 内联三态 | 第 5 轮改为「点下一步统一检查 + Dialog」 | 全部改成 `photo-check-loading` + `photo-advice-dialog` 分支 |
-| T-13 | 6 条认领用例在新增确认框后无法完成认领 | `pickup-submit` 只弹框，真正写入要再点 `claim-confirm-ok` | 新增 `submitClaimWithConfirm(page)` 并替换全部调用点 |
+| #    | 现象                                                    | 根因                                                                                                                | 处理                                                                                       |
+| ---- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| T-10 | 场景 16 断言 `main > header` 计数 1 失败（实际 0）      | 标题栏在 `template.tsx` 的 `PageTransition` 包装里，不是 `main` 的直接子元素                                        | 改为断言整页 `header` 计数 1、`header[data-testid=title-bar]` 计数 1、`main header` 计数 1 |
+| T-11 | 场景 8 第 3 条断言「王五 不可见」失败                   | 第 5 轮起 `/me` 顶部「我的信息」会显示**本人**的姓名 · 手机号（设计内），而 `createPickup` 又把认领姓名写回 profile | 断言范围收窄到 `me-pickup-card`：卡片内不得出现姓名/手机号                                 |
+| T-12 | 场景 1/9/13/8 仍在等 `photo-advice-ok/-retake` 内联三态 | 第 5 轮改为「点下一步统一检查 + Dialog」                                                                            | 全部改成 `photo-check-loading` + `photo-advice-dialog` 分支                                |
+| T-13 | 6 条认领用例在新增确认框后无法完成认领                  | `pickup-submit` 只弹框，真正写入要再点 `claim-confirm-ok`                                                           | 新增 `submitClaimWithConfirm(page)` 并替换全部调用点                                       |
 
 ### 10.5 已知限制 / 未覆盖
 
@@ -432,4 +433,3 @@
 3. `/me` 顶部仍显示**本人**的姓名与手机号（设计内），因此「/me 不出现个人信息」只能针对领取卡片断言。
 4. 领取卡片在物品对本人不可见时（被拾主撤单）退化为不可点击的「物品不可见」卡片，未做 E2E 断言。
 5. 真实模型抖动时仍可能触发 `generateObject` 60s 超时（走「识别失败，自己填一下」降级）；本轮 live 3 条均在 16s 内完成。
-

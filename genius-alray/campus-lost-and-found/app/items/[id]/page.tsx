@@ -1,25 +1,21 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import { notFound, redirect } from "next/navigation"
-import { ClockIcon, HandHeartIcon } from "lucide-react"
+import { ClockIcon } from "lucide-react"
 
 import { PageTitle } from "@/components/nav/title-bar"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import {
-  getItem,
-  listImagesForItems,
-  revealContact,
-} from "@/lib/db/found-items"
+import { getItem, listImagesForItems } from "@/lib/db/found-items"
+import { getMyPickup } from "@/lib/db/pickups"
 import { signPathsInOrder } from "@/lib/storage/signed"
 import { createClient, getCurrentUser } from "@/lib/supabase/server"
 import { ITEM_STATUS_LABEL } from "@/lib/types"
-import type { RevealedContact } from "@/lib/types"
+import type { Profile } from "@/lib/types"
 
 import { formatDateTime } from "../format"
+import { ClaimActions } from "./claim-actions"
 import { ItemGallery } from "./item-gallery"
-import { RevealCard } from "./reveal-card"
 
 export const metadata: Metadata = {
   title: "物品详情 · 校园失物招领",
@@ -49,14 +45,21 @@ export default async function ItemDetailPage({
 
   const isOwner = item.owner_id === user.id
 
-  // 只有「已被认领」才谈得上揭晓：认领人本人拿到联系方式，其他人拿到 null
-  let revealed: RevealedContact | null = null
-  if (!isOwner && item.status === "claimed") {
-    try {
-      revealed = await revealContact(supabase, id)
-    } catch {
-      revealed = null
-    }
+  // 认领入口需要：我的个人信息（没有就先引导去填）+ 我是否已认领这件物品
+  let profile: Profile | null = null
+  let claimedByMe = false
+  if (!isOwner) {
+    const [profileRow, pickup] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("id, username, real_name, phone, created_at, updated_at")
+        .eq("id", user.id)
+        .maybeSingle()
+        .then((res) => res.data),
+      getMyPickup(supabase, id, user.id),
+    ])
+    profile = profileRow
+    claimedByMe = Boolean(pickup)
   }
 
   return (
@@ -98,29 +101,20 @@ export default async function ItemDetailPage({
             </AlertDescription>
           </Alert>
         )
-      ) : revealed ? (
-        <div data-testid="pickup-success">
-          <RevealCard revealed={revealed} />
-        </div>
-      ) : item.status === "claimed" ? (
-        <Alert data-testid="pickup-claimed">
-          <AlertTitle>已被认领</AlertTitle>
-        </Alert>
       ) : item.status === "withdrawn" ? (
         <Alert data-testid="pickup-withdrawn">
           <AlertTitle>已撤单</AlertTitle>
         </Alert>
+      ) : item.status === "published" || claimedByMe ? (
+        <ClaimActions
+          itemId={item.id}
+          profile={profile}
+          claimedByMe={claimedByMe}
+        />
       ) : (
-        <Button
-          size="lg"
-          className="h-12 w-full text-base"
-          nativeButton={false}
-          render={<Link href={"/items/" + item.id + "/claim"} />}
-          data-testid="pickup-open"
-        >
-          <HandHeartIcon aria-hidden />
-          这是我的，我要认领
-        </Button>
+        <Alert data-testid="pickup-claimed">
+          <AlertTitle>已被认领</AlertTitle>
+        </Alert>
       )}
     </div>
   )

@@ -1,5 +1,5 @@
 import type { DbClient, Pickup } from "@/lib/types"
-import { unwrap } from "@/lib/db/types"
+import { unwrap, unwrapMaybe } from "@/lib/db/types"
 
 /** 领取：提交真实姓名 + 手机号。同一物品可被多人领取。 */
 export async function createPickup(
@@ -32,6 +32,24 @@ export async function listMyPickups(
       )
       .eq("picker_id", pickerId)
       .order("created_at", { ascending: false })
+  )
+}
+
+/** 我对某个物品的认领记录（认领信息屏要用）。RLS：picker_id = 我 可见。 */
+export async function getMyPickup(
+  supabase: DbClient,
+  itemId: string,
+  pickerId: string
+): Promise<Pickup | null> {
+  return unwrapMaybe(
+    await supabase
+      .from("pickups")
+      .select(
+        "id, found_item_id, picker_id, picker_name, picker_phone, created_at"
+      )
+      .eq("found_item_id", itemId)
+      .eq("picker_id", pickerId)
+      .maybeSingle()
   )
 }
 

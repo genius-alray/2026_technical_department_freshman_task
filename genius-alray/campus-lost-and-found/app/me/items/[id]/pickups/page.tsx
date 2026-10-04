@@ -1,10 +1,10 @@
 import type { Metadata } from "next"
 import { notFound, redirect } from "next/navigation"
-import { PhoneIcon, UsersIcon } from "lucide-react"
+import { UsersIcon } from "lucide-react"
 
+import { PhoneLink } from "@/components/contact/phone-link"
 import { PageTitle } from "@/components/nav/title-bar"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
@@ -109,18 +109,11 @@ export default async function ItemPickupsPage({
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="min-w-0 break-words">
-                  手机号：{pickup.picker_phone}
-                </span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  nativeButton={false}
-                  render={<a href={"tel:" + pickup.picker_phone} />}
-                >
-                  <PhoneIcon aria-hidden />
-                  拨打电话
-                </Button>
+                {/* 统一的电话组件：蓝色图标+号码，点击先二次确认再拨号 */}
+                <PhoneLink
+                  phone={pickup.picker_phone}
+                  testId={"picker-phone-" + pickup.id}
+                />
               </CardContent>
             </Card>
           ))
