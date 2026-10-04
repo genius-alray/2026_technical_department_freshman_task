@@ -43,9 +43,16 @@ export function createAdminClient(): Client {
   })
 }
 
+/** 造一个合法且唯一的测试手机号（1[3-9] + 9 位） */
+function testPhone(runId: string, seq: number): string {
+  const digits = (runId + seq.toString()).replace(/\D/g, "").slice(-6)
+  return "13" + digits.padStart(9, "0").slice(0, 9)
+}
+
 export type TestUser = {
   id: string
   username: string
+  phone: string
   email: string
   password: string
   client: Client
@@ -80,14 +87,17 @@ export function createTestContext(): TestContext {
       .toLowerCase()
       .replace(/[^a-z0-9_]/g, "")
       .slice(0, 6)
+    // 【第 7 轮】账号体系改成「手机号 + 密码」：内部邮箱由手机号派生，
+    // profiles 的 real_name / phone 是 NOT NULL，所以创建测试用户必须带上这两项。
     const username = ("u_" + safe + "_" + runId + seq).slice(0, 20)
-    const email = username + "@" + AUTH_EMAIL_DOMAIN
+    const phone = testPhone(runId, seq)
+    const email = phone + "@" + AUTH_EMAIL_DOMAIN
 
     const created = await admin.auth.admin.createUser({
       email,
       password: TEST_PASSWORD,
       email_confirm: true,
-      user_metadata: { username },
+      user_metadata: { real_name: "测试" + safe.slice(0, 4), phone },
     })
     if (created.error || !created.data?.user) {
       throw new Error(
@@ -109,6 +119,7 @@ export function createTestContext(): TestContext {
     const testUser: TestUser = {
       id: created.data.user.id,
       username,
+      phone,
       email,
       password: TEST_PASSWORD,
       client,

@@ -1,12 +1,11 @@
 import { unwrap, unwrapMaybe } from "@/lib/db/types"
 import type { DbClient, Profile } from "@/lib/types"
 
-const PROFILE_COLUMNS = "id, username, real_name, phone, created_at, updated_at"
+const PROFILE_COLUMNS = "id, real_name, phone, created_at, updated_at"
 
 /**
  * 读取「我的信息」。
- * RLS 是 profiles_select_own（id = auth.uid()），客户端只能读到/改到自己那一行，
- * 所以姓名与手机号放在 profiles 上是安全的。
+ * RLS 是 profiles_select_own（id = auth.uid()），客户端只能读到/改到自己那一行。
  */
 export async function getMyProfile(
   supabase: DbClient,
@@ -21,7 +20,7 @@ export async function getMyProfile(
   )
 }
 
-/** 保存「我的信息」（真实姓名 + 手机号）。下次认领时直接预填。 */
+/** 保存「我的信息」（真实姓名 + 手机号）。 */
 export async function updateMyProfile(
   supabase: DbClient,
   userId: string,

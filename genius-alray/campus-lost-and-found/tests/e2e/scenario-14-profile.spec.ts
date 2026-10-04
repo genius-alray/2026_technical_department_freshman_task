@@ -70,7 +70,7 @@ test.describe("场景 14：个人信息闭环", () => {
       const profile = await ctx.admin
         .from("profiles")
         .select("real_name, phone")
-        .eq("username", username)
+        .eq("id", username)
         .single()
       expect(profile.data?.real_name).toBe("张三")
       expect(profile.data?.phone).toBe("13800138000")
@@ -136,7 +136,7 @@ test.describe("场景 14：个人信息闭环", () => {
       const profile = await ctx.admin
         .from("profiles")
         .select("real_name, phone")
-        .eq("username", filledName)
+        .eq("id", filledName)
         .single()
       const pickup = await ctx.admin
         .from("pickups")

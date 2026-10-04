@@ -8,6 +8,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { getItem, listImagesForItems } from "@/lib/db/found-items"
 import { getMyPickup } from "@/lib/db/pickups"
+import { getMyProfile } from "@/lib/db/profiles"
 import { signPathsInOrder } from "@/lib/storage/signed"
 import { createClient, getCurrentUser } from "@/lib/supabase/server"
 import { ITEM_STATUS_LABEL } from "@/lib/types"
@@ -45,21 +46,16 @@ export default async function ItemDetailPage({
 
   const isOwner = item.owner_id === user.id
 
-  // 认领入口需要：我的个人信息（没有就先引导去填）+ 我是否已认领这件物品
+  // 认领入口需要：我的个人信息（注册时必填，认领确认框里要展示）+ 我是否已认领
   let profile: Profile | null = null
   let claimedByMe = false
   if (!isOwner) {
     const [profileRow, pickup] = await Promise.all([
-      supabase
-        .from("profiles")
-        .select("id, username, real_name, phone, created_at, updated_at")
-        .eq("id", user.id)
-        .maybeSingle()
-        .then((res) => res.data),
+      getMyProfile(supabase, user.id),
       getMyPickup(supabase, id, user.id),
     ])
     profile = profileRow
-    claimedByMe = Boolean(pickup)
+    claimedByMe = item.status === "claimed" && Boolean(pickup)
   }
 
   return (
@@ -105,16 +101,31 @@ export default async function ItemDetailPage({
         <Alert data-testid="pickup-withdrawn">
           <AlertTitle>已撤单</AlertTitle>
         </Alert>
-      ) : item.status === "published" || claimedByMe ? (
+      ) : claimedByMe ? (
         <ClaimActions
           itemId={item.id}
           profile={profile}
-          claimedByMe={claimedByMe}
+          claimedByMe
+          alreadyClaimedByOther={false}
         />
       ) : (
-        <Alert data-testid="pickup-claimed">
-          <AlertTitle>已被认领</AlertTitle>
-        </Alert>
+        <div className="flex flex-col gap-3">
+          {item.status === "claimed" ? (
+            // 【第 7 轮】别人认领了也允许继续认领：认领只是登记，归属靠线下协商
+            <Alert data-testid="pickup-claimed">
+              <AlertTitle>已有人认领</AlertTitle>
+              <AlertDescription>
+                如果你才是失主，也可以认领，认领后能看到其他认领人并协商。
+              </AlertDescription>
+            </Alert>
+          ) : null}
+          <ClaimActions
+            itemId={item.id}
+            profile={profile}
+            claimedByMe={false}
+            alreadyClaimedByOther={item.status === "claimed"}
+          />
+        </div>
       )}
     </div>
   )

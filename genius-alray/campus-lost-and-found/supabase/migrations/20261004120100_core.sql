@@ -42,37 +42,35 @@ insert into public.app_config (id) values (true);
 -- ============================================================
 -- 用户资料（由 auth.users 触发器自动创建）
 -- ============================================================
--- real_name / phone 是「个人信息」：初始为 null，用户可以在「我的信息」里填写，
--- 也可以在认领时补齐（create_pickup 会把这次提交的姓名/手机号一并存回来，下次认领直接复用）。
+-- 【第 7 轮】登录方式改为「手机号 + 密码」：手机号就是账号（内部映射为 <phone>@<域名>），
+-- 真实姓名与手机号在注册时必填，因此 profiles 里两列都是 NOT NULL，手机号唯一。
 create table public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
-  username text not null unique,
-  real_name text,
-  phone text,
+  real_name text not null,
+  phone text not null unique,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint profiles_username_format check (username ~ '^[a-z0-9_]{3,20}$'),
   constraint profiles_real_name_len check (
-    real_name is null or char_length(btrim(real_name)) between 2 and 20
+    char_length(btrim(real_name)) between 2 and 20
   ),
-  constraint profiles_phone_format check (
-    phone is null or phone ~ '^[0-9+\- ]{6,20}$'
-  )
+  constraint profiles_phone_format check (phone ~ '^1[3-9][0-9]{9}$')
 );
 create trigger profiles_touch before update on public.profiles
   for each row execute function public.touch_updated_at();
 
+-- 注册时 supabase.auth.signUp 通过 options.data 传 real_name / phone，
+-- 触发器把它们落到 profiles。缺字段直接报错（只有站内注册这一条创建用户的路径）。
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  v_name text := nullif(btrim(coalesce(new.raw_user_meta_data ->> 'real_name', '')), '');
+  v_phone text := nullif(btrim(coalesce(new.raw_user_meta_data ->> 'phone', '')), '');
 begin
-  insert into public.profiles (id, username)
-  values (
-    new.id,
-    coalesce(
-      nullif(new.raw_user_meta_data ->> 'username', ''),
-      'user_' || substr(replace(new.id::text, '-', ''), 1, 12)
-    )
-  )
+  if v_name is null or v_phone is null then
+    raise exception '注册需要真实姓名与手机号' using errcode = '22023';
+  end if;
+  insert into public.profiles (id, real_name, phone)
+  values (new.id, v_name, v_phone)
   on conflict (id) do nothing;
   return new;
 end;

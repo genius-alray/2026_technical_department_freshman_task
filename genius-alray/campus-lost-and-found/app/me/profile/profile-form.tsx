@@ -1,7 +1,6 @@
 "use client"
 
 import { useActionState, useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
 import { toast } from "@/components/ui/toast"
 
 import { Button } from "@/components/ui/button"
@@ -27,7 +26,6 @@ export function ProfileForm({
   /** 从认领流程进来时保存后回到这里（例如 /items/xxx） */
   nextPath?: string | null
 }) {
-  const router = useRouter()
   const [state, formAction, pending] = useActionState(
     saveProfileAction,
     initialState
@@ -36,19 +34,17 @@ export function ProfileForm({
   const [phone, setPhone] = useState(defaultPhone)
 
   useEffect(() => {
-    if (state.ok) {
-      toast.add({ type: "success", title: "已保存" })
-      router.replace(nextPath ?? "/me")
-      return
-    }
+    // 保存成功由服务端 redirect 回来源页（不再在客户端 replace）
     if (state.formError) toast.add({ type: "error", title: state.formError })
-  }, [state, router, nextPath])
+  }, [state])
 
   const nameInvalid = Boolean(state.fieldErrors?.realName)
   const phoneInvalid = Boolean(state.fieldErrors?.phone)
 
   return (
     <form action={formAction} className="my-auto flex flex-col gap-5">
+      <input type="hidden" name="next" value={nextPath ?? "/me"} />
+
       <Field data-invalid={nameInvalid}>
         <FieldLabel htmlFor="profile-name">真实姓名</FieldLabel>
         <Input

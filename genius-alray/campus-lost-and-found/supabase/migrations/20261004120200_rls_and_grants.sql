@@ -22,13 +22,27 @@ create policy profiles_update_own on public.profiles
   for update to authenticated using (id = (select auth.uid()))
   with check (id = (select auth.uid()));
 
--- ---------- found_items：未撤单的全部可读（含已认领）；自己撤单的也能看 ----------
+-- ---------- found_items：未撤单的全部可读（含已认领）----------
+-- 【第 7 轮】未登录用户也能刷信息流，所以 anon 也要能读（但只能读未撤单的公开列）。
+create policy found_items_select_public on public.found_items
+  for select to anon
+  using (status <> 'withdrawn');
+
 create policy found_items_select_visible on public.found_items
   for select to authenticated
   using (status <> 'withdrawn' or owner_id = (select auth.uid()));
 -- 写操作一律走 SECURITY DEFINER RPC，客户端没有任何写策略
 
 -- ---------- found_item_images：随所属物品的可见性 ----------
+create policy found_item_images_select_public on public.found_item_images
+  for select to anon
+  using (
+    exists (
+      select 1 from public.found_items fi
+      where fi.id = found_item_images.found_item_id and fi.status <> 'withdrawn'
+    )
+  );
+
 create policy found_item_images_select_visible on public.found_item_images
   for select to authenticated
   using (
@@ -60,10 +74,10 @@ revoke all on public.profiles, public.found_items, public.found_item_images,
   public.pickups, public.app_config
   from anon, authenticated;
 
--- profiles：RLS 只允许读/改自己那一行，所以姓名与手机号放在这里安全。
-grant select (id, username, real_name, phone, created_at, updated_at)
+-- profiles：RLS 只允许读/改自己那一行。
+grant select (id, real_name, phone, created_at, updated_at)
   on public.profiles to authenticated;
-grant update (username, real_name, phone) on public.profiles to authenticated;
+grant update (real_name, phone) on public.profiles to authenticated;
 
 -- found_items
 -- 【关键】可读列**不含** contact / location_lat / location_lng / location_label。
@@ -72,10 +86,16 @@ grant update (username, real_name, phone) on public.profiles to authenticated;
 grant select (id, owner_id, title, description, custody, status,
               created_at, updated_at, claimed_at, withdrawn_at)
   on public.found_items to authenticated;
+-- 未登录访客只能读失物墙需要的公开列（同样不含 contact / location_*）
+grant select (id, owner_id, title, description, custody, status,
+              created_at, updated_at, claimed_at, withdrawn_at)
+  on public.found_items to anon;
 
 -- found_item_images：只读（写入由 publish RPC 完成）
 grant select (id, found_item_id, storage_path, position, created_at)
   on public.found_item_images to authenticated;
+grant select (id, found_item_id, storage_path, position, created_at)
+  on public.found_item_images to anon;
 
 -- pickups：只读（写入由 create_pickup RPC 完成）
 grant select (id, found_item_id, picker_id, picker_name, picker_phone,

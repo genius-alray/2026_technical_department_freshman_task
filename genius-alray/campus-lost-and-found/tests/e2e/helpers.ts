@@ -174,7 +174,7 @@ export async function cleanupUserByUsername(
   const profile = await ctx.admin
     .from("profiles")
     .select("id")
-    .eq("username", username)
+    .eq("id", username)
     .maybeSingle()
   const userId = profile.data?.id
   if (!userId) return

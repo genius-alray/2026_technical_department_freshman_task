@@ -495,8 +495,7 @@ export function PublishClient({ maxPhotos }: Props) {
         return
       }
 
-      // 保留原有 toast；整屏正反馈由 SuccessOverlay 负责
-      toast.add({ type: "success", title: "发布成功，已出现在失物墙上" })
+      // 【第 7 轮】不再弹 toast：整屏对勾（SuccessOverlay）已经是很强的正向反馈
       setPublished(true)
     })
   }

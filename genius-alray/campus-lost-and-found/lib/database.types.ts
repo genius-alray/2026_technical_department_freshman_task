@@ -155,26 +155,23 @@ export type Database = {
         Row: {
           created_at: string
           id: string
-          phone: string | null
-          real_name: string | null
+          phone: string
+          real_name: string
           updated_at: string
-          username: string
         }
         Insert: {
           created_at?: string
           id: string
-          phone?: string | null
-          real_name?: string | null
+          phone: string
+          real_name: string
           updated_at?: string
-          username: string
         }
         Update: {
           created_at?: string
           id?: string
-          phone?: string | null
-          real_name?: string | null
+          phone?: string
+          real_name?: string
           updated_at?: string
-          username?: string
         }
         Relationships: []
       }
@@ -194,6 +191,15 @@ export type Database = {
           page_size: number
         }[]
       }
+      list_found_item_claimers: {
+        Args: { p_item_id: string }
+        Returns: {
+          out_created_at: string
+          out_picker_id: string
+          out_picker_name: string
+          out_picker_phone: string
+        }[]
+      }
       publish_found_item: {
         Args: {
           p_contact?: string
@@ -206,6 +212,10 @@ export type Database = {
           p_title: string
         }
         Returns: string
+      }
+      release_found_item_claim: {
+        Args: { p_item_id: string }
+        Returns: Database["public"]["Enums"]["item_status"]
       }
       reveal_found_item_contact: {
         Args: { p_item_id: string }

@@ -15,6 +15,30 @@ import {
 import { cn } from "@/lib/utils"
 
 /**
+ * 只读的电话展示：**电话图标 + 号码，蓝色，但不可点击**。
+ * 用在「确认框里展示自己的信息」这类不该触发拨号的场景。
+ */
+export function PhoneText({
+  phone,
+  className,
+}: {
+  phone: string
+  className?: string
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex max-w-full min-w-0 items-center gap-1.5 text-blue-600 dark:text-blue-400",
+        className
+      )}
+    >
+      <PhoneIcon className="size-4 shrink-0" aria-hidden />
+      <span className="min-w-0 break-all">{phone}</span>
+    </span>
+  )
+}
+
+/**
  * 全站统一的电话号码展示：**电话图标 + 号码，蓝色**。
  * 点击先弹二次确认，再走 `tel:` 直接拨号（避免误触拨出）。
  * 所有展示电话号码的地方都必须用它，不要再写裸文本。

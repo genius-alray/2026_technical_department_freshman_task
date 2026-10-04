@@ -57,6 +57,8 @@ const ROUTES: Array<(pathname: string) => TitleBarConfig | null> = [
         }
       : null
   },
+  (p) => (p === "/terms" ? { title: "服务条款", backHref: "/signup" } : null),
+  (p) => (p === "/privacy" ? { title: "隐私政策", backHref: "/signup" } : null),
   (p) => (p === "/me" ? { title: "我的", backHref: "/" } : null),
   (p) => (p === "/me/profile" ? { title: "我的信息", backHref: "/me" } : null),
   (p) =>
@@ -182,7 +184,7 @@ export function TitleBarProvider({ children }: { children: React.ReactNode }) {
     <TitleBarContext.Provider value={value}>
       <header
         data-testid="title-bar"
-        className="sticky top-0 z-40 flex min-w-0 items-center gap-3 border-b border-border/60 bg-background/85 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/70"
+        className="sticky top-0 z-40 flex min-w-0 items-center gap-3 bg-background/85 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/70"
       >
         <BackControl
           config={config}

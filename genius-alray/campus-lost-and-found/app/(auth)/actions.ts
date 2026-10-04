@@ -3,8 +3,8 @@
 import { redirect } from "next/navigation"
 import { z } from "zod"
 
-import { usernameToEmail } from "@/lib/env"
-import { createClient, getCurrentUser } from "@/lib/supabase/server"
+import { phoneToEmail } from "@/lib/env"
+import { createClient } from "@/lib/supabase/server"
 import { signInSchema, signUpSchema } from "@/lib/validation/schemas"
 
 import { safeNextPath } from "./next-path"
@@ -15,10 +15,14 @@ export type AuthState = {
 }
 
 const ERROR_MESSAGES: Array<[RegExp, string]> = [
-  [/already registered|already exists|user already/i, "该用户名已被注册"],
-  [/invalid login credentials/i, "用户名或密码不正确"],
+  [
+    /already registered|already exists|user already/i,
+    "该手机号已注册，请直接登录",
+  ],
+  [/invalid login credentials/i, "手机号或密码不正确"],
   [/password should be at least|password is too short/i, "密码至少 6 位"],
-  [/duplicate key|profiles_username/i, "该用户名已被注册"],
+  [/duplicate key|profiles_phone/i, "该手机号已注册，请直接登录"],
+  [/注册需要真实姓名与手机号/, "注册需要真实姓名与手机号"],
 ]
 
 function translateAuthError(message: string): string {
@@ -29,17 +33,20 @@ function translateAuthError(message: string): string {
 }
 
 /**
- * 注册：用户名 → 内部邮箱；username 通过 options.data 交给
- * handle_new_user 触发器建立 profile。不做邮箱验证。
+ * 注册：真实姓名 + 手机号 + 密码。
+ * 手机号映射成内部邮箱（不做短信验证码），姓名与手机号通过 options.data
+ * 交给 handle_new_user 触发器写进 profiles。
  */
 export async function signUp(
   _prevState: AuthState,
   formData: FormData
 ): Promise<AuthState> {
   const parsed = signUpSchema.safeParse({
-    username: formData.get("username"),
+    realName: formData.get("realName"),
+    phone: formData.get("phone"),
     password: formData.get("password"),
     confirmPassword: formData.get("confirmPassword"),
+    agree: formData.get("agree") === "on",
   })
   if (!parsed.success) {
     return { fieldErrors: z.flattenError(parsed.error).fieldErrors }
@@ -51,9 +58,11 @@ export async function signUp(
   let formError: string | undefined
   try {
     const { data, error } = await supabase.auth.signUp({
-      email: usernameToEmail(parsed.data.username),
+      email: phoneToEmail(parsed.data.phone),
       password: parsed.data.password,
-      options: { data: { username: parsed.data.username } },
+      options: {
+        data: { real_name: parsed.data.realName, phone: parsed.data.phone },
+      },
     })
     if (error) {
       formError = translateAuthError(error.message)
@@ -68,13 +77,13 @@ export async function signUp(
   redirect(nextPath)
 }
 
-/** 登录：成功后回到 next（站内）或首页 */
+/** 登录：手机号 + 密码，成功后回到 next（站内）或首页 */
 export async function signIn(
   _prevState: AuthState,
   formData: FormData
 ): Promise<AuthState> {
   const parsed = signInSchema.safeParse({
-    username: formData.get("username"),
+    phone: formData.get("phone"),
     password: formData.get("password"),
   })
   if (!parsed.success) {
@@ -87,7 +96,7 @@ export async function signIn(
   let formError: string | undefined
   try {
     const { error } = await supabase.auth.signInWithPassword({
-      email: usernameToEmail(parsed.data.username),
+      email: phoneToEmail(parsed.data.phone),
       password: parsed.data.password,
     })
     if (error) formError = translateAuthError(error.message)
@@ -97,14 +106,4 @@ export async function signIn(
 
   if (formError) return { formError }
   redirect(nextPath)
-}
-
-/** 登出：清除会话后回到登录页 */
-export async function signOut(): Promise<void> {
-  const user = await getCurrentUser()
-  if (!user) redirect("/login")
-
-  const supabase = await createClient()
-  await supabase.auth.signOut()
-  redirect("/login")
 }

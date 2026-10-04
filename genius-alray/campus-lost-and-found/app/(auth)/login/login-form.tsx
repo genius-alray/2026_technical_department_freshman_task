@@ -17,36 +17,35 @@ function toErrors(messages?: string[]) {
 
 export function LoginForm({ nextPath }: { nextPath: string }) {
   const [state, formAction, pending] = useActionState(signIn, initialState)
-  // 受控输入：React 19 在 action 结束后会 reset 表单，否则用户已填内容会被清空
-  const [username, setUsername] = useState("")
+  const [phone, setPhone] = useState("")
   const [password, setPassword] = useState("")
 
   useEffect(() => {
     if (state.formError) toast.add({ type: "error", title: state.formError })
   }, [state])
 
-  const usernameInvalid = Boolean(state.fieldErrors?.username)
+  const phoneInvalid = Boolean(state.fieldErrors?.phone)
   const passwordInvalid = Boolean(state.fieldErrors?.password)
 
   return (
     <form action={formAction} className="flex flex-col gap-5">
       <input type="hidden" name="next" value={nextPath} />
 
-      <Field data-invalid={usernameInvalid}>
-        <FieldLabel htmlFor="username">用户名</FieldLabel>
+      <Field data-invalid={phoneInvalid}>
+        <FieldLabel htmlFor="phone">手机号</FieldLabel>
         <Input
-          id="username"
-          name="username"
-          autoComplete="username"
-          autoCapitalize="none"
-          autoCorrect="off"
-          placeholder="例如 zhangsan"
-          aria-invalid={usernameInvalid}
-          value={username}
-          onChange={(event) => setUsername(event.target.value)}
+          id="phone"
+          name="phone"
+          type="tel"
+          inputMode="tel"
+          autoComplete="tel"
+          placeholder="11 位手机号"
+          aria-invalid={phoneInvalid}
+          value={phone}
+          onChange={(event) => setPhone(event.target.value)}
           required
         />
-        <FieldError errors={toErrors(state.fieldErrors?.username)} />
+        <FieldError errors={toErrors(state.fieldErrors?.phone)} />
       </Field>
 
       <Field data-invalid={passwordInvalid}>

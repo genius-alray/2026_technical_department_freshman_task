@@ -138,11 +138,11 @@ end;
 $$;
 
 -- ---------- 认领：提交真实姓名 + 手机号，并把物品标记为已认领 ----------
--- 认领即归属：第一个认领的人把物品置为 claimed。
---   * 已被别人认领 → 拒绝
+-- 【第 7 轮】允许**多人认领**同一物品：认领只是登记「我可能是失主」，
+-- 谁拿走由线下协商（前端会展示其他认领人并给出协商提示）。
 --   * 已撤单 → 拒绝
 --   * 拾主不能认领自己的物品
---   * 认领人自己重复提交视为更新（改姓名/手机号），不产生第二条记录
+--   * 同一人重复提交视为更新（改姓名/手机号），不产生第二条记录
 create or replace function public.create_pickup(
   p_item_id uuid,
   p_name text,
@@ -186,9 +186,6 @@ begin
   if v_item.status = 'withdrawn' then
     raise exception '该物品已撤单，无法认领' using errcode = 'P0001';
   end if;
-  if v_item.status = 'claimed' and not v_mine then
-    raise exception '该物品已被认领' using errcode = 'P0001';
-  end if;
 
   insert into public.pickups (found_item_id, picker_id, picker_name, picker_phone)
   values (p_item_id, v_uid, v_name, v_phone)
@@ -211,6 +208,85 @@ begin
    where id = v_uid;
 
   return v_id;
+end;
+$$;
+
+-- ---------- 撤回认领（「拿错了，不是我的」）----------
+-- 认领人本人可以把自己摘出来：物品回到待认领（published），
+-- 但**提交过的认领记录保留**（审计需要，也方便他再改主意重新认领）。
+create or replace function public.release_found_item_claim(p_item_id uuid)
+returns public.item_status
+language plpgsql security definer set search_path = public as $$
+declare
+  v_uid uuid := auth.uid();
+  v_item public.found_items;
+  v_mine boolean;
+begin
+  if v_uid is null then
+    raise exception '未登录' using errcode = '42501';
+  end if;
+
+  select * into v_item from public.found_items fi where fi.id = p_item_id for update;
+  if not found then
+    raise exception '物品不存在' using errcode = 'P0002';
+  end if;
+
+  select exists (
+    select 1 from public.pickups pk
+    where pk.found_item_id = p_item_id and pk.picker_id = v_uid
+  ) into v_mine;
+  if not v_mine then
+    raise exception '你没有认领过这件物品' using errcode = '42501';
+  end if;
+
+  if v_item.status = 'claimed' then
+    update public.found_items
+       set status = 'published', claimed_at = null
+     where id = p_item_id;
+  end if;
+
+  return 'published'::public.item_status;
+end;
+$$;
+
+-- ---------- 列出某物品的全部认领人 ----------
+-- 只有「拾主本人」或「已经认领过这件物品的人」能看到别人，用于协商冲突。
+create or replace function public.list_found_item_claimers(p_item_id uuid)
+returns table (
+  out_picker_id uuid,
+  out_picker_name text,
+  out_picker_phone text,
+  out_created_at timestamptz
+)
+language plpgsql stable security definer set search_path = public as $$
+declare
+  v_uid uuid := auth.uid();
+  v_item public.found_items;
+  v_allowed boolean;
+begin
+  if v_uid is null then
+    raise exception '未登录' using errcode = '42501';
+  end if;
+
+  select * into v_item from public.found_items fi where fi.id = p_item_id;
+  if not found then
+    raise exception '物品不存在' using errcode = 'P0002';
+  end if;
+
+  v_allowed := v_item.owner_id = v_uid
+    or exists (
+      select 1 from public.pickups pk
+      where pk.found_item_id = p_item_id and pk.picker_id = v_uid
+    );
+  if not v_allowed then
+    raise exception '请先认领该物品' using errcode = '42501';
+  end if;
+
+  return query
+    select pk.picker_id, pk.picker_name, pk.picker_phone, pk.created_at
+      from public.pickups pk
+     where pk.found_item_id = p_item_id
+     order by pk.created_at asc;
 end;
 $$;
 
@@ -264,6 +340,8 @@ declare
     'public.get_app_config()',
     'public.publish_found_item(text, text, public.custody_kind, text, double precision, double precision, text, text[])',
     'public.withdraw_found_item(uuid)',
+    'public.release_found_item_claim(uuid)',
+    'public.list_found_item_claimers(uuid)',
     'public.create_pickup(uuid, text, text)',
     'public.reveal_found_item_contact(uuid)'
   ];
@@ -273,5 +351,8 @@ begin
     execute format('revoke all on function %s from public, anon, authenticated', v_sig);
     execute format('grant execute on function %s to authenticated', v_sig);
   end loop;
+
+  -- 未登录访客要能刷失物墙，所以读配置的 RPC 对 anon 开放（它只返回 max_photos / page_size）
+  execute 'grant execute on function public.get_app_config() to anon';
 end;
 $$;

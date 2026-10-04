@@ -45,8 +45,13 @@ export const publicEnv = {
   authEmailDomain: process.env.NEXT_PUBLIC_AUTH_EMAIL_DOMAIN ?? "campus.local",
 } as const
 
-// 用户名 → 内部邮箱（不做邮箱验证）
-export function usernameToEmail(username: string) {
-  const normalized = username.trim().toLowerCase()
+/**
+ * 手机号 → 内部邮箱。
+ * 【第 7 轮】账号体系改成「手机号 + 密码」，但 Supabase Auth 需要邮箱/手机号二选一；
+ * 我们不做短信验证码，所以把手机号映射成内部邮箱 <phone>@<域名>，
+ * 手机号唯一 ⇒ 内部邮箱唯一，登录/注册都走 signInWithPassword / signUp。
+ */
+export function phoneToEmail(phone: string) {
+  const normalized = phone.replace(/\D/g, "")
   return normalized + "@" + (publicEnv.authEmailDomain || "campus.local")
 }

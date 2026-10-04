@@ -172,7 +172,7 @@ describe("矩阵 6：create_pickup（认领即归属）", () => {
     // 先把 picker 的 profile 清空，确保是「认领写回」而不是残留
     await ctx.admin
       .from("profiles")
-      .update({ real_name: null, phone: null })
+      .update({ real_name: "占位姓名", phone: "13900000000" })
       .eq("id", picker.id)
 
     const result = await createPickupRaw(

@@ -18,9 +18,12 @@ import { ItemCard } from "./item-card"
 export function ItemWall({
   initialItems,
   initialHasMore,
+  authed = true,
 }: {
   initialItems: ListedItem[]
   initialHasMore: boolean
+  /** 未登录时点卡片要先去登录 */
+  authed?: boolean
 }) {
   const [items, setItems] = useState<ListedItem[]>(initialItems)
   const [offset, setOffset] = useState(initialItems.length)
@@ -54,11 +57,11 @@ export function ItemWall({
           {items.map((item, index) =>
             index < firstScreenCount ? (
               <StaggerItem key={item.id} className="mb-3 break-inside-avoid">
-                <ItemCard item={item} />
+                <ItemCard item={item} authed={authed} />
               </StaggerItem>
             ) : (
               <div key={item.id} className="mb-3 break-inside-avoid">
-                <ItemCard item={item} />
+                <ItemCard item={item} authed={authed} />
               </div>
             )
           )}

@@ -124,6 +124,19 @@
     @apply bg-background text-foreground;
     /* 移动端优先：任何页面都不允许横向溢出 */
     overflow-x: hidden;
+    /* 像原生 App 一样：界面文字不可选中（长按不会出现选词/复制菜单） */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  /* 输入框与可选内容仍然允许选中、复制 */
+  input,
+  textarea,
+  select,
+  [contenteditable="true"],
+  [data-selectable="true"] {
+    -webkit-user-select: text;
+    user-select: text;
   }
   button:not(:disabled),
   [role="button"]:not(:disabled) {

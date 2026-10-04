@@ -50,7 +50,19 @@ export async function withdrawItemAction(
   }
 }
 
-/** 保存「我的信息」（真实姓名 + 手机号）。成功由前端 toast 后回 /me。 */
+/** 只接受站内相对路径（认领流程会把 /items/xxx 传进来） */
+function safeNext(value: FormDataEntryValue | null): string {
+  const raw = typeof value === "string" ? value : ""
+  if (!raw.startsWith("/") || raw.startsWith("//")) return "/me"
+  return raw
+}
+
+/**
+ * 保存「我的信息」（真实姓名 + 手机号）。
+ * 成功后**在服务端 redirect** 回来源页（认领流程会带 ?next=/items/xxx），
+ * 不依赖客户端的 router.replace —— 之前就是因为放在客户端 effect 里，
+ * 偶尔会被别处的导航打断，用户看到的是「我的」页。
+ */
 export async function saveProfileAction(
   _prevState: ProfileState,
   formData: FormData
@@ -66,16 +78,19 @@ export async function saveProfileAction(
     return { fieldErrors: z.flattenError(parsed.error).fieldErrors }
   }
 
+  const nextPath = safeNext(formData.get("next"))
+
   try {
     const supabase = await createClient()
     await updateMyProfile(supabase, user.id, parsed.data)
     revalidatePath("/me")
-    return { ok: true }
   } catch (error) {
     return {
       formError: error instanceof DbError ? error.message : "保存失败，请重试",
     }
   }
+
+  redirect(nextPath)
 }
 
 /** 退出登录 */

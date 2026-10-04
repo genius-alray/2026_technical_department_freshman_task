@@ -53,6 +53,41 @@ export async function getMyPickup(
   )
 }
 
+/**
+ * 某物品的全部认领人（含自己）。
+ * 【为什么走 RPC】pickups 的 RLS 只放行「我自己」和「我是拾主」两种行，
+ * 认领人看不到别的认领人；多人认领冲突时前端需要展示其他人，所以由
+ * `list_found_item_claimers`（SECURITY DEFINER，校验「拾主或已认领者」）返回。
+ */
+export async function listItemClaimers(
+  supabase: DbClient,
+  itemId: string
+): Promise<
+  Array<{
+    picker_id: string
+    picker_name: string
+    picker_phone: string
+    created_at: string
+  }>
+> {
+  const rows = unwrap(
+    await supabase.rpc("list_found_item_claimers", { p_item_id: itemId })
+  )
+  return rows.map((row) => ({
+    picker_id: row.out_picker_id,
+    picker_name: row.out_picker_name,
+    picker_phone: row.out_picker_phone,
+    created_at: row.out_created_at,
+  }))
+}
+
+/** 撤回认领（「拿错了，不是我的」）：物品回到待认领，认领记录保留 */
+export async function releaseClaim(supabase: DbClient, itemId: string) {
+  return unwrap(
+    await supabase.rpc("release_found_item_claim", { p_item_id: itemId })
+  )
+}
+
 /** 拾主查看某个物品的领取人名单（RLS：物品 owner 可见） */
 export async function listItemPickups(
   supabase: DbClient,

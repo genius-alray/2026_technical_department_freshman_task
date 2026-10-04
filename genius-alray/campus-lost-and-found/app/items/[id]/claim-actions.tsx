@@ -3,9 +3,9 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { HandHeartIcon } from "lucide-react"
+import { ContactIcon, HandHeartIcon } from "lucide-react"
 
-import { PhoneLink } from "@/components/contact/phone-link"
+import { PhoneText } from "@/components/contact/phone-link"
 import { SuccessOverlay } from "@/components/motion/primitives"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -24,23 +24,23 @@ import { createPickupAction } from "../actions"
 /**
  * 详情页底部的认领入口。
  *
- * 认领的**二次确认发生在点击时**：
- * - 没有个人信息 → 先提醒「需要补充个人信息才能认领」，选「去填写」跳到个人信息页（保存后回到本页）
- * - 有个人信息 → 直接弹「诚信认领」确认框，里面展示自己的姓名与手机号
- * 确认后认领，并把用户送到独立的「认领信息」屏看指引与拾主联系方式。
+ * 认领的**二次确认发生在点击时**：弹「诚信认领」确认框（只读展示自己的姓名与手机号），
+ * 确认后才写入，然后把用户送到独立的「认领信息」屏看指引与拾主联系方式。
+ * 物品已被别人认领时也允许认领（认领只是登记，归属靠线下协商）。
  */
 export function ClaimActions({
   itemId,
   profile,
   claimedByMe,
+  alreadyClaimedByOther = false,
 }: {
   itemId: string
   profile: Profile | null
   claimedByMe: boolean
+  alreadyClaimedByOther?: boolean
 }) {
   const router = useRouter()
   const [open, setOpen] = React.useState(false)
-  const [needProfile, setNeedProfile] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [done, setDone] = React.useState(false)
   const [pending, startTransition] = React.useTransition()
@@ -52,8 +52,7 @@ export function ClaimActions({
     }
   }, [])
 
-  const profilePath = "/items/" + itemId + "/claim"
-  const complete = Boolean(profile?.real_name && profile.phone)
+  const infoPath = "/items/" + itemId + "/claim"
 
   if (claimedByMe) {
     return (
@@ -61,22 +60,13 @@ export function ClaimActions({
         size="lg"
         className="h-12 w-full text-base"
         nativeButton={false}
-        render={<Link href={profilePath} />}
+        render={<Link href={infoPath} />}
         data-testid="pickup-view-info"
       >
         <HandHeartIcon aria-hidden />
         查看认领信息
       </Button>
     )
-  }
-
-  function openClaim() {
-    setError(null)
-    if (complete) {
-      setOpen(true)
-      return
-    }
-    setNeedProfile(true)
   }
 
   function confirm() {
@@ -94,7 +84,7 @@ export function ClaimActions({
       setOpen(false)
       setDone(true)
       timerRef.current = window.setTimeout(() => {
-        router.push(profilePath)
+        router.push(infoPath)
       }, 900)
     })
   }
@@ -106,50 +96,15 @@ export function ClaimActions({
         className="h-12 w-full text-base"
         data-testid="pickup-open"
         disabled={pending}
-        onClick={openClaim}
+        onClick={() => {
+          setError(null)
+          setOpen(true)
+        }}
       >
         <HandHeartIcon aria-hidden />
-        这是我的，我要认领
+        {alreadyClaimedByOther ? "我也要认领" : "这是我的，我要认领"}
       </Button>
 
-      {/* 没有个人信息：先提醒补充 */}
-      <Dialog open={needProfile} onOpenChange={setNeedProfile}>
-        <DialogContent
-          showCloseButton={false}
-          className="max-w-xs gap-4"
-          data-testid="claim-need-profile"
-        >
-          <DialogHeader>
-            <DialogTitle>需要补充个人信息才能认领</DialogTitle>
-            <DialogDescription>
-              认领要留下真实姓名与手机号，方便拾主核对。
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              data-testid="claim-need-profile-cancel"
-              onClick={() => setNeedProfile(false)}
-            >
-              取消
-            </Button>
-            <Button
-              data-testid="claim-go-profile"
-              nativeButton={false}
-              render={
-                <Link
-                  href={"/me/profile?next=" + encodeURIComponent(profilePath)}
-                />
-              }
-            >
-              去填写
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* 有个人信息：诚信认领二次确认 */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent
           showCloseButton={false}
@@ -163,12 +118,19 @@ export function ClaimActions({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex flex-col gap-1 rounded-2xl bg-muted/60 px-3 py-2 text-sm">
+          {/* 只读展示：这里不能交互（避免给自己拨号） */}
+          <div
+            data-testid="claim-confirm-profile"
+            className="flex flex-col gap-1.5 rounded-2xl bg-muted/60 px-3 py-2 text-sm select-none"
+          >
             <span className="text-xs text-muted-foreground">
               将提交你的信息
             </span>
-            <span data-testid="claim-confirm-name">{profile?.real_name}</span>
-            {profile?.phone ? <PhoneLink phone={profile.phone} /> : null}
+            <span className="flex items-center gap-1.5">
+              <ContactIcon className="size-4 shrink-0" aria-hidden />
+              <span data-testid="claim-confirm-name">{profile?.real_name}</span>
+            </span>
+            {profile?.phone ? <PhoneText phone={profile.phone} /> : null}
           </div>
 
           {error ? (

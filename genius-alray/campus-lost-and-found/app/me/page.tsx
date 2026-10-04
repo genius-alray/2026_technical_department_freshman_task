@@ -116,31 +116,45 @@ async function loadMeData(supabase: DbClient, userId: string): Promise<MeData> {
   }
 }
 
-/** 顶部一行「我的信息」入口：填过就直接显示，没填提示去填。 */
-function ProfileEntry({ profile }: { profile: Profile | null }) {
+/**
+ * 顶部个人信息卡片：头像 + 姓名 + 手机号，右侧放退出登录。
+ * 点左侧进「我的信息」修改（手机号是本人号码，不做成可拨号的蓝色链接）。
+ */
+function ProfileCard({
+  profile,
+  action,
+}: {
+  profile: Profile | null
+  action: React.ReactNode
+}) {
   const name = profile?.real_name ?? ""
   const phone = profile?.phone ?? ""
-  const complete = Boolean(name && phone)
 
   return (
-    <Link
-      href="/me/profile"
-      data-testid="profile-entry"
-      className="flex min-w-0 items-center justify-between gap-3 rounded-2xl bg-muted/60 px-4 py-3 transition-colors hover:bg-muted active:scale-[0.99]"
-    >
-      <span className="flex min-w-0 flex-col">
-        <span className="truncate text-sm font-medium">
-          {complete ? name : "填写个人信息"}
+    <div className="flex min-w-0 items-center gap-3">
+      <Link
+        href="/me/profile"
+        data-testid="profile-entry"
+        className="flex min-w-0 flex-1 items-center gap-3 rounded-2xl bg-muted/60 px-4 py-3 transition-colors hover:bg-muted active:scale-[0.99]"
+      >
+        <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary text-base font-medium text-primary-foreground">
+          {name ? name.slice(0, 1) : "我"}
         </span>
-        <span className="text-xs text-muted-foreground">
-          {complete ? "已保存，认领时自动带上" : "认领时要用"}
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-base font-medium">
+            {name || "未填写姓名"}
+          </span>
+          <span className="truncate text-xs text-muted-foreground">
+            {phone || "未填写手机号"}
+          </span>
         </span>
-      </span>
-      <ChevronRightIcon
-        className="size-4 shrink-0 text-muted-foreground"
-        aria-hidden
-      />
-    </Link>
+        <ChevronRightIcon
+          className="size-4 shrink-0 text-muted-foreground"
+          aria-hidden
+        />
+      </Link>
+      {action}
+    </div>
   )
 }
 
@@ -315,14 +329,26 @@ export default async function MePage() {
       ))
     )
 
+  const form = (
+    <form action={signOutAction}>
+      <Button
+        type="submit"
+        size="sm"
+        variant="outline"
+        className="shrink-0"
+        data-testid="sign-out"
+      >
+        <LogOutIcon aria-hidden />
+        退出登录
+      </Button>
+    </form>
+  )
+
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-4 px-4 py-4">
-      <PageTitle
-        title="我的"
-        subtitle={profile?.username ?? user.email ?? ""}
-      />
+      <PageTitle title="我的" />
 
-      <ProfileEntry profile={profile} />
+      <ProfileCard profile={profile} action={form} />
 
       <MeTabs
         publishedCount={data.items.length}
@@ -330,18 +356,6 @@ export default async function MePage() {
         published={published}
         pickups={pickups}
       />
-
-      <form action={signOutAction} className="flex justify-center">
-        <Button
-          type="submit"
-          size="sm"
-          variant="ghost"
-          className="text-muted-foreground"
-        >
-          <LogOutIcon aria-hidden />
-          退出登录
-        </Button>
-      </form>
     </div>
   )
 }

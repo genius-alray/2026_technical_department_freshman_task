@@ -6,7 +6,7 @@ import {
   publishItemSchema,
   signUpSchema,
   uploadMetaSchema,
-  usernameSchema,
+  phoneSchema,
 } from "@/lib/validation/schemas"
 
 const ITEM_ID = "11111111-1111-4111-8111-111111111111"
@@ -176,9 +176,9 @@ describe("pickupSchema：实名领取", () => {
 
 describe("账号与上传元数据", () => {
   it("用户名小写化与字符集", () => {
-    expect(usernameSchema.parse("Alice_01")).toBe("alice_01")
-    expect(usernameSchema.safeParse("ab").success).toBe(false)
-    expect(usernameSchema.safeParse("a-b").success).toBe(false)
+    expect(phoneSchema.parse("Alice_01")).toBe("alice_01")
+    expect(phoneSchema.safeParse("ab").success).toBe(false)
+    expect(phoneSchema.safeParse("a-b").success).toBe(false)
   })
 
   it("两次密码不一致失败", () => {

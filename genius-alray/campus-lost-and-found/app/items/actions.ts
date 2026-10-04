@@ -10,14 +10,39 @@ import {
   mergeImages,
   revealContact,
 } from "@/lib/db/found-items"
-import { createPickup } from "@/lib/db/pickups"
+import { createPickup, releaseClaim } from "@/lib/db/pickups"
 import { DbError } from "@/lib/db/types"
 import { createSignedUrlMap } from "@/lib/storage/signed"
 import { createClient, getCurrentUser } from "@/lib/supabase/server"
 import { pickupSchema } from "@/lib/validation/schemas"
 import type { RevealedContact } from "@/lib/types"
 
-import type { LoadMoreResult, PickupResult } from "./types"
+import type { LoadMoreResult, PickupResult, SimpleResult } from "./types"
+
+/**
+ * 「拿错了，不是我的」：撤回自己的认领，物品回到待认领。
+ * 认领记录保留（数据库侧不删行），所以他还能再认领。
+ */
+export async function releaseClaimAction(
+  itemId: string
+): Promise<SimpleResult> {
+  const user = await getCurrentUser()
+  if (!user) return { ok: false, message: "登录已过期，请重新登录" }
+
+  const parsed = z.string().uuid().safeParse(itemId)
+  if (!parsed.success) return { ok: false, message: "参数不合法" }
+
+  try {
+    const supabase = await createClient()
+    await releaseClaim(supabase, parsed.data)
+    revalidatePath("/")
+    revalidatePath("/items/" + parsed.data)
+    revalidatePath("/me")
+    return { ok: true, message: "已撤回认领" }
+  } catch (error) {
+    return { ok: false, message: messageOf(error) }
+  }
+}
 
 function messageOf(error: unknown): string {
   if (error instanceof DbError) return error.message

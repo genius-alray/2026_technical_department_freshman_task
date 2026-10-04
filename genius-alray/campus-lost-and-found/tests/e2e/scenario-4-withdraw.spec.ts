@@ -110,7 +110,7 @@ test.describe("场景 4：拾主撤单", () => {
       const profile = await ctx.admin
         .from("profiles")
         .select("id")
-        .eq("username", strangerName)
+        .eq("id", strangerName)
         .maybeSingle()
       if (profile.data?.id) {
         await ctx.admin.auth.admin.deleteUser(profile.data.id)

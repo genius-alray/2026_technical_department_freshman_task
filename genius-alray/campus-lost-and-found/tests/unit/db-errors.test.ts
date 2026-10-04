@@ -221,7 +221,7 @@ describe("lib/db 封装在真实 RPC 错误上的表现（第 4 轮语义）", (
 
   it("第 5 轮：getMyProfile / updateMyProfile 走通，非法手机号被 CHECK 拒绝（23514）", async () => {
     const initial = await getMyProfile(other.client, other.id)
-    expect(initial?.username).toBe(other.username)
+    expect(initial?.phone).toBe(other.phone)
     expect(initial?.real_name).toBeNull()
 
     const saved = await updateMyProfile(other.client, other.id, {

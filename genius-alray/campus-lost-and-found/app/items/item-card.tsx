@@ -11,13 +11,23 @@ import { formatDateTime } from "./format"
  * 联系方式、位置、拾主用户名既不在数据里、也不在这里渲染。
  * 点击反馈走 CSS（active:scale），保持 Server Component。
  */
-export function ItemCard({ item }: { item: ListedItem }) {
+export function ItemCard({
+  item,
+  authed = true,
+}: {
+  item: ListedItem
+  /** 未登录时点卡片先去登录（首屏信息流公开可看，详情要登录） */
+  authed?: boolean
+}) {
   const cover = item.images[0]
   const claimed = item.status === "claimed"
+  const href = authed
+    ? "/items/" + item.id
+    : "/login?next=" + encodeURIComponent("/items/" + item.id)
 
   return (
     <Link
-      href={"/items/" + item.id}
+      href={href}
       data-testid="item-card"
       className="group block overflow-hidden rounded-2xl bg-card ring-1 ring-foreground/10 transition-[transform,scale,box-shadow] duration-200 hover:shadow-md active:scale-[0.98] motion-reduce:transition-none"
     >

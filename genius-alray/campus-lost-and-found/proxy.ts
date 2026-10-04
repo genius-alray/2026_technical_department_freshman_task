@@ -4,7 +4,10 @@ import { NextResponse, type NextRequest } from "next/server"
 // Next.js 16 起 middleware.ts 更名为 proxy.ts。
 // 这里只做「乐观跳转」：刷新 session + 未登录重定向。
 // 真正的授权由 RLS 与每个 Server Action 内的 getCurrentUser() 承担。
-const PUBLIC_PATHS = ["/login", "/signup"]
+// 只有登录/注册页会把已登录用户弹回首页
+const AUTH_PATHS = ["/login", "/signup"]
+// 未登录也能访问（首屏信息流可以看，但详情页会要求登录）
+const PUBLIC_PATHS = ["/", "/terms", "/privacy"]
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request })
@@ -42,9 +45,10 @@ export async function proxy(request: NextRequest) {
     return response
   }
 
-  const isPublic = PUBLIC_PATHS.some(
+  const isAuthPath = AUTH_PATHS.some(
     (p) => pathname === p || pathname.startsWith(p + "/")
   )
+  const isPublic = isAuthPath || PUBLIC_PATHS.includes(pathname)
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone()
@@ -54,7 +58,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  if (user && isPublic) {
+  if (user && isAuthPath) {
     const url = request.nextUrl.clone()
     url.pathname = "/"
     url.search = ""

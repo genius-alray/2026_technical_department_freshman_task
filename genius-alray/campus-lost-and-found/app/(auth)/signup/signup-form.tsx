@@ -1,6 +1,7 @@
 "use client"
 
 import { useActionState, useEffect, useState } from "react"
+import Link from "next/link"
 import { toast } from "@/components/ui/toast"
 
 import { Button } from "@/components/ui/button"
@@ -23,7 +24,8 @@ function toErrors(messages?: string[]) {
 export function SignUpForm({ nextPath }: { nextPath: string }) {
   const [state, formAction, pending] = useActionState(signUp, initialState)
   // 受控输入：React 19 在 action 结束后会 reset 表单，否则用户已填内容会被清空
-  const [username, setUsername] = useState("")
+  const [realName, setRealName] = useState("")
+  const [phone, setPhone] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
 
@@ -31,30 +33,50 @@ export function SignUpForm({ nextPath }: { nextPath: string }) {
     if (state.formError) toast.add({ type: "error", title: state.formError })
   }, [state])
 
-  const usernameInvalid = Boolean(state.fieldErrors?.username)
+  const nameInvalid = Boolean(state.fieldErrors?.realName)
+  const phoneInvalid = Boolean(state.fieldErrors?.phone)
   const passwordInvalid = Boolean(state.fieldErrors?.password)
   const confirmInvalid = Boolean(state.fieldErrors?.confirmPassword)
+  const agreeInvalid = Boolean(state.fieldErrors?.agree)
 
   return (
     <form action={formAction} className="flex flex-col gap-5">
       <input type="hidden" name="next" value={nextPath} />
 
-      <Field data-invalid={usernameInvalid}>
-        <FieldLabel htmlFor="username">用户名</FieldLabel>
+      <Field data-invalid={nameInvalid}>
+        <FieldLabel htmlFor="realName">真实姓名</FieldLabel>
         <Input
-          id="username"
-          name="username"
-          autoComplete="username"
-          autoCapitalize="none"
-          autoCorrect="off"
-          placeholder="3-20 位小写字母、数字或下划线"
-          aria-invalid={usernameInvalid}
-          value={username}
-          onChange={(event) => setUsername(event.target.value)}
+          id="realName"
+          name="realName"
+          autoComplete="name"
+          placeholder="例如 张三"
+          aria-invalid={nameInvalid}
+          value={realName}
+          onChange={(event) => setRealName(event.target.value)}
           required
         />
-        <FieldDescription>登录时使用，注册后不可修改。</FieldDescription>
-        <FieldError errors={toErrors(state.fieldErrors?.username)} />
+        <FieldDescription>线下核对身份用，不会公开展示。</FieldDescription>
+        <FieldError errors={toErrors(state.fieldErrors?.realName)} />
+      </Field>
+
+      <Field data-invalid={phoneInvalid}>
+        <FieldLabel htmlFor="phone">手机号</FieldLabel>
+        <Input
+          id="phone"
+          name="phone"
+          type="tel"
+          inputMode="tel"
+          autoComplete="tel"
+          placeholder="11 位手机号"
+          aria-invalid={phoneInvalid}
+          value={phone}
+          onChange={(event) => setPhone(event.target.value)}
+          required
+        />
+        <FieldDescription>
+          手机号就是登录账号；只对拾主可见，用来联系你认领失物。
+        </FieldDescription>
+        <FieldError errors={toErrors(state.fieldErrors?.phone)} />
       </Field>
 
       <Field data-invalid={passwordInvalid}>
@@ -88,6 +110,38 @@ export function SignUpForm({ nextPath }: { nextPath: string }) {
         />
         <FieldError errors={toErrors(state.fieldErrors?.confirmPassword)} />
       </Field>
+
+      <label className="flex items-start gap-2 text-xs text-muted-foreground">
+        <input
+          type="checkbox"
+          name="agree"
+          className="mt-0.5 size-4 shrink-0 accent-primary"
+          aria-invalid={agreeInvalid}
+        />
+        <span>
+          我已阅读并同意
+          <Link
+            href="/terms"
+            target="_blank"
+            className="mx-1 text-blue-600 underline-offset-4 hover:underline dark:text-blue-400"
+          >
+            《服务条款》
+          </Link>
+          与
+          <Link
+            href="/privacy"
+            target="_blank"
+            className="mx-1 text-blue-600 underline-offset-4 hover:underline dark:text-blue-400"
+          >
+            《隐私政策》
+          </Link>
+        </span>
+      </label>
+      {agreeInvalid ? (
+        <p className="text-xs text-destructive">
+          {state.fieldErrors?.agree?.[0]}
+        </p>
+      ) : null}
 
       <Button
         type="submit"

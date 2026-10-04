@@ -1,6 +1,5 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import { redirect } from "next/navigation"
 import { PlusIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -29,8 +28,9 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic"
 
 export default async function HomePage() {
+  // 【第 7 轮】未登录也能刷信息流；点进详情才要求登录
   const user = await getCurrentUser()
-  if (!user) redirect("/login")
+  const authed = Boolean(user)
 
   const supabase = await createClient()
 
@@ -57,7 +57,7 @@ export default async function HomePage() {
         size="lg"
         className="h-12 w-full text-base"
         nativeButton={false}
-        render={<Link href="/publish" />}
+        render={<Link href={authed ? "/publish" : "/login?next=%2Fpublish"} />}
         data-testid="publish-entry"
       >
         <PlusIcon aria-hidden />
@@ -75,6 +75,7 @@ export default async function HomePage() {
         <ItemWall
           initialItems={listed}
           initialHasMore={items.length >= pageSize}
+          authed={authed}
         />
       )}
     </div>

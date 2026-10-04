@@ -7,12 +7,12 @@ import {
 
 /**
  * 第 5 轮新增：profiles 的「我的信息」（real_name / phone）
- * - 可读列：id, username, real_name, phone, created_at, updated_at
- * - 可写列：username, real_name, phone（其余列 42501）
+ * - 可读列：id, real_name, phone, created_at, updated_at
+ * - 可写列：real_name, phone（其余列 42501）
  * - RLS：只能读/改自己那一行（profiles_select_own / profiles_update_own）
  * - CHECK：姓名 2-20 字、手机号 ^[0-9+\- ]{6,20}$（23514）
  */
-const PROFILE_COLUMNS = "id, username, real_name, phone, created_at, updated_at"
+const PROFILE_COLUMNS = "id, real_name, phone, created_at, updated_at"
 
 describe("第 5 轮：profiles 个人信息列级与行级权限", () => {
   let ctx: TestContext
@@ -37,7 +37,7 @@ describe("第 5 轮：profiles 个人信息列级与行级权限", () => {
       .single()
 
     expect(result.error).toBeNull()
-    expect(result.data?.username).toBe(alice.username)
+    expect(result.data?.phone).toBe(alice.phone)
     expect(result.data?.real_name).toBeNull()
     expect(result.data?.phone).toBeNull()
     expect(result.data?.created_at).toBeTruthy()

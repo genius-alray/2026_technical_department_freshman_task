@@ -100,7 +100,7 @@ test.describe("场景 3：拾主查看认领人名单", () => {
       const profile = await ctx.admin
         .from("profiles")
         .select("id")
-        .eq("username", pickerName)
+        .eq("id", pickerName)
         .maybeSingle()
       if (profile.data?.id) {
         await ctx.admin.auth.admin.deleteUser(profile.data.id)
