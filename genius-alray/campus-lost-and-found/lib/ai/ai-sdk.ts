@@ -50,7 +50,6 @@ function requestOptions() {
     providerOptions: {
       [PROVIDER_NAME]: {
         reasoningEffort: REASONING_EFFORT,
-        strictJsonSchema: true,
       },
     },
   }
@@ -120,9 +119,12 @@ export function createAiSdkProviders(config: AiSdkConfig): AiProviders {
     name: PROVIDER_NAME,
     baseURL: config.baseUrl || "https://api.deepseek.com/v1",
     apiKey: config.apiKey,
-    // 【关键】默认是 false。不开这个开关，provider 不会发 response_format: json_schema，
-    // generateObject 会退化成「靠提示词求 JSON」—— 实测模型会返回裸对象、空对象等非法形状。
-    supportsStructuredOutputs: true,
+    // 【第 8 轮】DeepSeek 目前**不支持** response_format: json_schema
+    // （实测返回 "This response_format type is unavailable now"），
+    // 所以必须关掉结构化输出，让 generateObject 走「提示词 + JSON 模式」：
+    // system prompt 已经写明只输出 JSON Schema 里的字段，实测能稳定返回
+    // {"title":"…","description":"…"}（json_object 模式已单独验证可用）。
+    supportsStructuredOutputs: false,
   })
   const model = provider(config.model)
 

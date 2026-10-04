@@ -12,7 +12,7 @@ export type ItemStatus = Database["public"]["Enums"]["item_status"]
 
 export const CUSTODY_LABEL: Record<CustodyKind, string> = {
   kept: "代为保管",
-  in_place: "留在原地",
+  in_place: "指定存放位置",
 }
 
 export const ITEM_STATUS_LABEL: Record<ItemStatus, string> = {

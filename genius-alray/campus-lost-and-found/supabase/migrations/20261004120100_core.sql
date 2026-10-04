@@ -32,7 +32,7 @@ $$;
 -- ============================================================
 create table public.app_config (
   id boolean primary key default true,
-  max_photos int not null default 5 check (max_photos between 1 and 20),
+  max_photos int not null default 3 check (max_photos between 1 and 20),
   page_size int not null default 20 check (page_size between 1 and 50),
   updated_at timestamptz not null default now(),
   constraint app_config_single_row check (id)

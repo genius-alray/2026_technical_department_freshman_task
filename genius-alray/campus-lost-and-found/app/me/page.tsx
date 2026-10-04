@@ -1,15 +1,10 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import { redirect } from "next/navigation"
-import {
-  ChevronRightIcon,
-  ImageIcon,
-  InboxIcon,
-  LogOutIcon,
-  UsersIcon,
-} from "lucide-react"
+import { ChevronRightIcon, ImageIcon, InboxIcon, UsersIcon } from "lucide-react"
 
 import { PageTitle } from "@/components/nav/title-bar"
+import { SignOutButton } from "./sign-out-button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -46,7 +41,6 @@ import {
   type Profile,
 } from "@/lib/types"
 
-import { signOutAction } from "./actions"
 import { MeItemActions } from "./me-item-actions"
 import { MeItemShell } from "./me-item-shell"
 import { MeTabs } from "./me-tabs"
@@ -329,26 +323,11 @@ export default async function MePage() {
       ))
     )
 
-  const form = (
-    <form action={signOutAction}>
-      <Button
-        type="submit"
-        size="sm"
-        variant="outline"
-        className="shrink-0"
-        data-testid="sign-out"
-      >
-        <LogOutIcon aria-hidden />
-        退出登录
-      </Button>
-    </form>
-  )
-
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-4 px-4 py-4">
       <PageTitle title="我的" />
 
-      <ProfileCard profile={profile} action={form} />
+      <ProfileCard profile={profile} action={<SignOutButton />} />
 
       <MeTabs
         publishedCount={data.items.length}

@@ -120,19 +120,16 @@ describe("lib/db 封装在真实 RPC 错误上的表现（第 4 轮语义）", (
     }
   })
 
-  it("别人认领已被认领的物品 → 「该物品已被认领」（P0001 中文透出）", async () => {
+  it("第 7 轮：别人也能认领已被认领的物品（多人认领，靠线下协商）", async () => {
     await createPickup(picker, itemId, "李四", "13900139000")
-    try {
-      await dbCreatePickup(other.client, {
-        itemId,
-        name: "王五",
-        phone: "13700137000",
-      })
-      throw new Error("本应失败")
-    } catch (error) {
-      expect((error as DbError).code).toBe("P0001")
-      expect((error as DbError).message).toBe("该物品已被认领")
-    }
+    // 不再抛错：第二个认领人登记成功，物品保持 claimed
+    await dbCreatePickup(other.client, {
+      itemId,
+      name: "王五",
+      phone: "13700137000",
+    })
+    const rows = await listItemPickups(owner.client, itemId)
+    expect(rows.length).toBe(2)
   })
 
   it("已认领后撤单 → 「该物品已被认领，无法撤单」", async () => {
@@ -208,8 +205,8 @@ describe("lib/db 封装在真实 RPC 错误上的表现（第 4 轮语义）", (
     expect(found?.claimed_at).not.toBeNull()
 
     const pickups = await listItemPickups(owner.client, itemId)
-    expect(pickups.length).toBe(1)
-    expect(pickups[0]?.picker_name).toBe("李四")
+    expect(pickups.length).toBeGreaterThanOrEqual(1)
+    expect(pickups.some((row) => row.picker_name === "李四")).toBe(true)
   })
 
   it("withdrawItem 成功撤单后从墙上消失", async () => {
@@ -219,21 +216,25 @@ describe("lib/db 封装在真实 RPC 错误上的表现（第 4 轮语义）", (
     expect(wall.some((entry) => entry.id === id)).toBe(false)
   })
 
-  it("第 5 轮：getMyProfile / updateMyProfile 走通，非法手机号被 CHECK 拒绝（23514）", async () => {
+  it("第 7 轮：getMyProfile / updateMyProfile 走通，非法手机号被 CHECK 拒绝（23514）", async () => {
+    // 注册即必填：初始就有姓名与手机号
+    // （注意：上面的认领会按第 6 轮的行为把「认领用的手机号」写回个人信息）
     const initial = await getMyProfile(other.client, other.id)
-    expect(initial?.phone).toBe(other.phone)
-    expect(initial?.real_name).toBeNull()
+    expect(initial?.real_name).toBeTruthy()
+    expect(initial?.phone).toMatch(/^1[3-9][0-9]{9}$/)
 
+    // 换一个没被占用的手机号（手机号唯一）
+    const nextPhone = "13500000001"
     const saved = await updateMyProfile(other.client, other.id, {
       realName: "李四",
-      phone: "13900139000",
+      phone: nextPhone,
     })
     expect(saved.real_name).toBe("李四")
-    expect(saved.phone).toBe("13900139000")
+    expect(saved.phone).toBe(nextPhone)
 
     const readBack = await getMyProfile(other.client, other.id)
     expect(readBack?.real_name).toBe("李四")
-    expect(readBack?.phone).toBe("13900139000")
+    expect(readBack?.phone).toBe(nextPhone)
 
     try {
       await updateMyProfile(other.client, other.id, {

@@ -8,13 +8,13 @@ import {
   DURATION,
   FadeIn,
   LoadingOverlay,
-  MotionBar,
   StaggerItem,
   StaggerList,
   StepTransition,
   SuccessOverlay,
   TapScale,
 } from "@/components/motion/primitives"
+import { PhoneText } from "@/components/contact/phone-link"
 import { PageTitle } from "@/components/nav/title-bar"
 import { Button } from "@/components/ui/button"
 import {
@@ -49,15 +49,16 @@ const MAX_IMAGE_BYTES = 2 * 1024 * 1024
  */
 const ANALYZE_TIMEOUT_MS = 25_000
 
-/** 一步一屏：拍照 → 确认信息 → 怎么还 */
-const STEPS = ["拍照", "确认", "怎么还"] as const
-
 type Phase = "idle" | "uploading" | "publishing"
 type AnalyzeState = "idle" | "running" | "done" | "error"
 
 type Photo = { path: string; preview: string }
 
-type Props = { maxPhotos: number }
+type Props = {
+  maxPhotos: number
+  /** 账号里的手机号：选「代为保管」时直接用，不再让用户填 */
+  defaultContact: string
+}
 
 /** 浏览器端压缩：最长边 ≤1600px、jpeg、质量 0.8，并压到 ≤2MB */
 async function loadSource(
@@ -149,7 +150,7 @@ function errorTitle(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback
 }
 
-export function PublishClient({ maxPhotos }: Props) {
+export function PublishClient({ maxPhotos, defaultContact }: Props) {
   const router = useRouter()
   const inputRef = useRef<HTMLInputElement>(null)
   const [isPending, startTransition] = useTransition()
@@ -173,7 +174,7 @@ export function PublishClient({ maxPhotos }: Props) {
   const [retakeReason, setRetakeReason] = useState<string | null>(null)
 
   const [custody, setCustody] = useState<CustodyKind | "">("")
-  const [contact, setContact] = useState("")
+  const [contact] = useState(defaultContact)
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(
     null
   )
@@ -440,8 +441,11 @@ export function PublishClient({ maxPhotos }: Props) {
     )
   }
 
+  /** 点选一张卡片后，进入下一屏做详细设置（联系方式自动用账号手机号 / 设置存放位置） */
   function pickCustody(next: CustodyKind) {
+    setDirection(1)
     setCustody(next)
+    setStep(3)
     if (next === "in_place" && !coords) locate()
   }
 
@@ -466,7 +470,7 @@ export function PublishClient({ maxPhotos }: Props) {
       if (custody === "kept" && contact.trim().length < 5) {
         toast.add({
           type: "error",
-          title: "代为保管需要填写联系方式（至少 5 个字符）",
+          title: "账号缺少手机号，请先在「我的」里补充",
         })
         return
       }
@@ -512,36 +516,6 @@ export function PublishClient({ maxPhotos }: Props) {
         onBack={step === 0 ? undefined : handleHeaderBack}
       />
 
-      <nav aria-label="发布步骤" className="flex flex-col gap-2">
-        <ol className="flex items-center gap-4 text-xs">
-          {STEPS.map((label, index) => (
-            <li
-              key={label}
-              aria-current={index === step ? "step" : undefined}
-              className={cn(
-                "flex items-center gap-1",
-                index === step
-                  ? "font-medium text-foreground"
-                  : "text-muted-foreground"
-              )}
-            >
-              <span
-                className={cn(
-                  "flex size-4 items-center justify-center rounded-full text-[10px]",
-                  index === step
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted"
-                )}
-              >
-                {index + 1}
-              </span>{" "}
-              {label}
-            </li>
-          ))}
-        </ol>
-        <MotionBar value={((step + 1) / STEPS.length) * 100} />
-      </nav>
-
       <input
         ref={inputRef}
         type="file"
@@ -564,71 +538,56 @@ export function PublishClient({ maxPhotos }: Props) {
       >
         {step === 0 ? (
           // 这一屏只做拍照，内容不多：整块（大按钮 / 网格 + 下一步）垂直居中
-          <div className="my-auto flex min-w-0 flex-col gap-4">
-            {photos.length === 0 ? (
-              <TapScale>
-                <Button
-                  type="button"
-                  size="lg"
-                  variant="secondary"
-                  className="h-40 w-full flex-col gap-2 text-base"
-                  disabled={busy}
-                  onClick={openPicker}
-                >
-                  <CameraIcon className="size-7" aria-hidden />
-                  拍照 / 选择照片
-                </Button>
-              </TapScale>
-            ) : (
-              <div className="flex min-w-0 flex-col gap-3">
-                <StaggerList className="grid grid-cols-3 gap-2">
-                  {photos.map((photo) => (
-                    <StaggerItem
-                      key={photo.path}
-                      className={cn(
-                        "relative overflow-hidden rounded-xl bg-muted transition-opacity duration-[180ms]",
-                        removing.includes(photo.path)
-                          ? "opacity-0"
-                          : "opacity-100"
-                      )}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={photo.preview}
-                        alt="已上传照片"
-                        className="h-24 w-full object-cover"
-                      />
-                      <Button
-                        type="button"
-                        size="icon-xs"
-                        variant="destructive"
-                        aria-label="删除这张照片"
-                        className="absolute top-1 right-1"
-                        disabled={busy}
-                        onClick={() => removePhoto(photo.path)}
-                      >
-                        <Trash2Icon aria-hidden />
-                      </Button>
-                    </StaggerItem>
-                  ))}
-                </StaggerList>
+          <div className="my-auto flex min-w-0 flex-col gap-5">
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              把物品放在光线好的地方，拍清楚整体和明显的特征。
+            </p>
 
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm text-muted-foreground">
-                    {`已上传 ${photos.length}/${maxPhotos}`}
-                  </span>
+            {/* 照片列表：最后一个是「添加照片」，没有照片时它就是上传按钮 */}
+            <StaggerList className="grid grid-cols-3 gap-2">
+              {photos.map((photo) => (
+                <StaggerItem
+                  key={photo.path}
+                  className={cn(
+                    "relative overflow-hidden rounded-xl bg-muted transition-opacity duration-[180ms]",
+                    removing.includes(photo.path) ? "opacity-0" : "opacity-100"
+                  )}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={photo.preview}
+                    alt="已上传照片"
+                    className="h-24 w-full object-cover"
+                  />
                   <Button
                     type="button"
-                    size="sm"
-                    variant="ghost"
+                    size="icon-xs"
+                    variant="destructive"
+                    aria-label="删除这张照片"
+                    className="absolute top-1 right-1"
+                    disabled={busy}
+                    onClick={() => removePhoto(photo.path)}
+                  >
+                    <Trash2Icon aria-hidden />
+                  </Button>
+                </StaggerItem>
+              ))}
+
+              {photos.length < maxPhotos ? (
+                <StaggerItem key="add-photo">
+                  <button
+                    type="button"
+                    data-testid="photo-add"
                     disabled={busy}
                     onClick={openPicker}
+                    className="flex h-24 w-full flex-col items-center justify-center gap-1 rounded-xl bg-muted text-xs text-muted-foreground transition-colors hover:bg-muted/70 active:scale-[0.98] disabled:opacity-50"
                   >
-                    继续添加
-                  </Button>
-                </div>
-              </div>
-            )}
+                    <CameraIcon className="size-5" aria-hidden />
+                    添加照片
+                  </button>
+                </StaggerItem>
+              ) : null}
+            </StaggerList>
 
             {phase === "uploading" ? (
               <p className="text-sm text-muted-foreground" role="status">
@@ -726,59 +685,54 @@ export function PublishClient({ maxPhotos }: Props) {
         ) : null}
 
         {step === 2 ? (
-          <div
-            className={cn(
-              "flex min-w-0 flex-col gap-4",
-              // 还没选保管方式时内容很少：标题 + 选项 + 主按钮整块居中；
-              // 选完出现输入框后恢复 flex-1，自然向下生长、向上不裁切
-              custody === "" ? "my-auto" : "flex-1"
-            )}
-          >
-            <div className="flex flex-col gap-1">
-              <h2 className="font-heading text-base font-semibold">怎么还</h2>
-              <p className="text-xs text-muted-foreground">
-                选一种把东西还给失主的方式
-              </p>
-            </div>
+          <div className="my-auto flex min-w-0 flex-col gap-3">
+            <h2 className="font-heading text-base font-semibold">怎么还</h2>
 
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant={custody === "kept" ? "default" : "outline"}
-                aria-pressed={custody === "kept"}
-                className="h-11 flex-1"
-                disabled={busy}
-                onClick={() => pickCustody("kept")}
-              >
-                代为保管
-              </Button>
-              <Button
-                type="button"
-                variant={custody === "in_place" ? "default" : "outline"}
-                aria-pressed={custody === "in_place"}
-                className="h-11 flex-1"
-                disabled={busy}
-                onClick={() => pickCustody("in_place")}
-              >
-                留在原地
-              </Button>
-            </div>
+            <button
+              type="button"
+              data-testid="custody-kept"
+              disabled={busy}
+              onClick={() => pickCustody("kept")}
+              className="flex flex-col gap-1 rounded-2xl bg-muted/60 px-4 py-3 text-left transition-colors hover:bg-muted active:scale-[0.99] disabled:opacity-60"
+            >
+              <span className="text-sm font-medium">代为保管</span>
+              <span className="text-xs text-muted-foreground">
+                我先收着，失主联系我，当面取回
+              </span>
+            </button>
 
+            <button
+              type="button"
+              data-testid="custody-in-place"
+              disabled={busy}
+              onClick={() => pickCustody("in_place")}
+              className="flex flex-col gap-1 rounded-2xl bg-muted/60 px-4 py-3 text-left transition-colors hover:bg-muted active:scale-[0.99] disabled:opacity-60"
+            >
+              <span className="text-sm font-medium">指定存放位置</span>
+              <span className="text-xs text-muted-foreground">
+                东西放在某处，失主自己去取
+              </span>
+            </button>
+          </div>
+        ) : null}
+
+        {step === 3 ? (
+          <div className="my-auto flex min-w-0 flex-col gap-5">
             {custody === "kept" ? (
-              <FadeIn className="flex flex-col gap-2">
-                <Label htmlFor="contact">联系方式</Label>
-                <Textarea
-                  id="contact"
-                  value={contact}
-                  maxLength={100}
-                  placeholder="电话或微信，至少 5 个字符"
-                  onChange={(event) => setContact(event.target.value)}
-                />
-              </FadeIn>
-            ) : null}
-
-            {custody === "in_place" ? (
-              <FadeIn className="flex flex-col gap-2">
+              <div className="flex flex-col gap-2">
+                <h2 className="font-heading text-base font-semibold">
+                  联系方式
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  用你账号里的手机号，失主会直接打给你
+                </p>
+                <PhoneText phone={contact} className="text-base" />
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <h2 className="font-heading text-base font-semibold">
+                  存放位置
+                </h2>
                 <Button
                   type="button"
                   variant="outline"
@@ -793,7 +747,6 @@ export function PublishClient({ maxPhotos }: Props) {
                     ? `已获取坐标：${coords.lat}, ${coords.lng}`
                     : "未获取到坐标，请填写位置描述"}
                 </p>
-                <Label htmlFor="locationLabel">位置描述</Label>
                 <Input
                   id="locationLabel"
                   value={locationLabel}
@@ -801,22 +754,20 @@ export function PublishClient({ maxPhotos }: Props) {
                   placeholder="例如：图书馆 3 楼自习区靠窗第三排"
                   onChange={(event) => setLocationLabel(event.target.value)}
                 />
-              </FadeIn>
-            ) : null}
+              </div>
+            )}
 
-            <div className="mt-auto pt-2">
-              <TapScale>
-                <Button
-                  type="button"
-                  size="lg"
-                  className="h-12 w-full text-base"
-                  disabled={busy}
-                  onClick={handlePublish}
-                >
-                  {phase === "publishing" ? "正在发布…" : "发布"}
-                </Button>
-              </TapScale>
-            </div>
+            <TapScale>
+              <Button
+                type="button"
+                size="lg"
+                className="h-12 w-full text-base"
+                disabled={busy}
+                onClick={handlePublish}
+              >
+                {phase === "publishing" ? "正在发布…" : "发布"}
+              </Button>
+            </TapScale>
           </div>
         ) : null}
       </StepTransition>

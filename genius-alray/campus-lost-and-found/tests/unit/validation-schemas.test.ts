@@ -175,19 +175,31 @@ describe("pickupSchema：实名领取", () => {
 })
 
 describe("账号与上传元数据", () => {
-  it("用户名小写化与字符集", () => {
-    expect(phoneSchema.parse("Alice_01")).toBe("alice_01")
-    expect(phoneSchema.safeParse("ab").success).toBe(false)
-    expect(phoneSchema.safeParse("a-b").success).toBe(false)
+  it("手机号即账号：只接受 11 位大陆手机号", () => {
+    expect(phoneSchema.parse(" 13800138000 ")).toBe("13800138000")
+    for (const bad of ["1380013800", "23800138000", "1380013800a", ""]) {
+      expect(phoneSchema.safeParse(bad).success, bad).toBe(false)
+    }
   })
 
-  it("两次密码不一致失败", () => {
-    const result = signUpSchema.safeParse({
-      username: "alice",
+  it("注册需要姓名 + 手机号 + 两次一致密码 + 勾选同意", () => {
+    const valid = {
+      realName: "张三",
+      phone: "13800138000",
       password: "abcdef",
-      confirmPassword: "abcdefg",
-    })
-    expect(result.success).toBe(false)
+      confirmPassword: "abcdef",
+      agree: true,
+    }
+    expect(signUpSchema.safeParse(valid).success).toBe(true)
+    expect(
+      signUpSchema.safeParse({ ...valid, confirmPassword: "abcdefg" }).success
+    ).toBe(false)
+    expect(signUpSchema.safeParse({ ...valid, agree: false }).success).toBe(
+      false
+    )
+    expect(signUpSchema.safeParse({ ...valid, phone: "12345" }).success).toBe(
+      false
+    )
   })
 
   it("uploadMetaSchema 要求合法 uuid", () => {
@@ -213,23 +225,21 @@ describe("第 5 轮：profileSchema 与 photoAdviceSchema", () => {
     ).toBe(true)
   })
 
-  it("profileSchema：手机号含字母/过短/过长失败，合法与 +-空格 通过", () => {
+  it("profileSchema：手机号沿用注册那套严格规则（11 位大陆手机号）", () => {
     const base = { realName: "张三" }
     for (const phone of [
       "1380013800a",
       "12345",
       "1".repeat(21),
       "电话13800138000",
+      "+86 138-0013-8000",
     ]) {
       expect(profileSchema.safeParse({ ...base, phone }).success, phone).toBe(
         false
       )
     }
     expect(
-      profileSchema.safeParse({ ...base, phone: "13800138000" }).success
-    ).toBe(true)
-    expect(
-      profileSchema.safeParse({ ...base, phone: "+86 138-0013-8000" }).success
+      profileSchema.safeParse({ ...base, phone: " 13800138000 " }).success
     ).toBe(true)
   })
 
