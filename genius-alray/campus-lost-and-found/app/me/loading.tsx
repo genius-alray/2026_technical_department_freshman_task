@@ -2,7 +2,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 
 export default function MeLoading() {
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 px-4 py-4">
+      <Skeleton className="h-14 w-full rounded-2xl" />
       <Skeleton className="h-9 w-full rounded-4xl" />
       {[0, 1, 2].map((index) => (
         <div

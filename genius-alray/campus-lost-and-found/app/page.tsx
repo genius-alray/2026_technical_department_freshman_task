@@ -3,7 +3,6 @@ import Link from "next/link"
 import { redirect } from "next/navigation"
 import { PlusIcon } from "lucide-react"
 
-import { AppHeader } from "@/components/nav/app-header"
 import { Button } from "@/components/ui/button"
 import {
   Empty,
@@ -54,8 +53,6 @@ export default async function HomePage() {
 
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-4 px-4 py-5">
-      <AppHeader title="失物墙" showMe />
-
       <Button
         size="lg"
         className="h-12 w-full text-base"

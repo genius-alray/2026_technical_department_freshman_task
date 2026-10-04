@@ -44,8 +44,9 @@ export default function RootLayout({
     >
       <body>
         <ThemeProvider>
-          {/* Base UI 的 Toaster 同时是 Provider，必须包裹整棵树 */}
-          <Toaster>
+          {/* Base UI 的 Toaster 同时是 Provider，必须包裹整棵树。
+              toast 显示在顶部，会短暂盖住标题栏，所以把停留时间收到 3 秒。 */}
+          <Toaster timeout={3000}>
             {/* MotionProvider：系统「减少动态效果」时全站动效自动退化 */}
             <MotionProvider>
               <div className="mx-auto flex min-h-svh w-full max-w-md flex-col">

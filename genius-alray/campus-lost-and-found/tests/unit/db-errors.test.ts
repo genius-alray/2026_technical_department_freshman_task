@@ -17,6 +17,7 @@ import {
   createPickup as dbCreatePickup,
   listItemPickups,
 } from "@/lib/db/pickups"
+import { getMyProfile, updateMyProfile } from "@/lib/db/profiles"
 import { DbError, toDbError, unwrap, unwrapMaybe } from "@/lib/db/types"
 
 function pgError(code: string, message = "raw postgres error"): PostgrestError {
@@ -216,5 +217,32 @@ describe("lib/db 封装在真实 RPC 错误上的表现（第 4 轮语义）", (
     await dbWithdrawItem(owner.client, id)
     const wall = await listWallItems(owner.client, { limit: 100, offset: 0 })
     expect(wall.some((entry) => entry.id === id)).toBe(false)
+  })
+
+  it("第 5 轮：getMyProfile / updateMyProfile 走通，非法手机号被 CHECK 拒绝（23514）", async () => {
+    const initial = await getMyProfile(other.client, other.id)
+    expect(initial?.username).toBe(other.username)
+    expect(initial?.real_name).toBeNull()
+
+    const saved = await updateMyProfile(other.client, other.id, {
+      realName: "李四",
+      phone: "13900139000",
+    })
+    expect(saved.real_name).toBe("李四")
+    expect(saved.phone).toBe("13900139000")
+
+    const readBack = await getMyProfile(other.client, other.id)
+    expect(readBack?.real_name).toBe("李四")
+    expect(readBack?.phone).toBe("13900139000")
+
+    try {
+      await updateMyProfile(other.client, other.id, {
+        realName: "李四",
+        phone: "abc",
+      })
+      throw new Error("本应失败")
+    } catch (error) {
+      expect((error as DbError).code).toBe("23514")
+    }
   })
 })

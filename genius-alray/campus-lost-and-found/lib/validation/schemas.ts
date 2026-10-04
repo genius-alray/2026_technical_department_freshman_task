@@ -76,6 +76,19 @@ export const photoAdviceSchema = z.object({
   reason: z.string().min(1).max(30),
 })
 
+/** 「我的信息」：真实姓名 + 手机号（认领时也会用同一套规则校验） */
+export const profileSchema = z.object({
+  realName: z
+    .string()
+    .trim()
+    .min(2, "请填写真实姓名（2-20 字）")
+    .max(20, "姓名最多 20 字"),
+  phone: z
+    .string()
+    .trim()
+    .regex(/^[0-9+\- ]{6,20}$/, "请填写有效的手机号"),
+})
+
 /** 领取：必须留下真实姓名与手机号 */
 export const pickupSchema = z.object({
   itemId: z.string().uuid(),

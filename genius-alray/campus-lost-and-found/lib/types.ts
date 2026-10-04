@@ -57,6 +57,23 @@ export type ListedItem = PublicItem & {
   images: Array<{ path: string; url: string }>
 }
 
+/** 「我的信息」：真实姓名 + 手机号。初始为 null，可主动填写，认领时也会自动补齐 */
+export type Profile = {
+  id: string
+  username: string
+  real_name: string | null
+  phone: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** 个人信息是否已填写完整 */
+export function isProfileComplete(
+  profile: Pick<Profile, "real_name" | "phone"> | null | undefined
+): boolean {
+  return Boolean(profile?.real_name && profile.phone)
+}
+
 export type Pickup = {
   id: string
   found_item_id: string

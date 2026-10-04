@@ -8,6 +8,7 @@ import {
   newTestContext,
   signInViaUi,
   signUpViaUi,
+  submitClaimWithConfirm,
   uniqueUsername,
   uploadPhoto,
   type E2EItem,
@@ -128,6 +129,11 @@ test.describe("场景 8：UI 简化要求", () => {
         timeout: 60_000,
       })
       await page.getByRole("button", { name: "下一步" }).click()
+      // 第 5 轮：1 张 → 先弹补拍对话框；「仍然继续」才进第 2 屏
+      await expect(page.getByTestId("photo-advice-dialog")).toBeVisible({
+        timeout: T,
+      })
+      await page.getByTestId("photo-advice-skip").click()
 
       // 第 2 屏（进入即自动识别，加载期间没有输入框）
       await expect(page.locator("#title")).toBeVisible({ timeout: 60_000 })
@@ -151,8 +157,12 @@ test.describe("场景 8：UI 简化要求", () => {
       await expect(page.locator("#title")).toHaveCount(0, { timeout: T })
       expect(new URL(page.url()).pathname).toBe("/publish")
 
-      // 再前进到第 2、3 屏
+      // 再前进到第 2、3 屏（1 张 → 仍需在弹出的对话框里选「仍然继续」）
       await page.getByRole("button", { name: "下一步" }).click()
+      await expect(page.getByTestId("photo-advice-dialog")).toBeVisible({
+        timeout: T,
+      })
+      await page.getByTestId("photo-advice-skip").click()
       await expect(page.locator("#title")).toBeVisible({ timeout: 60_000 })
       await expect(page.locator("#title")).not.toHaveValue("", {
         timeout: 60_000,
@@ -194,19 +204,31 @@ test.describe("场景 8：UI 简化要求", () => {
       await expect(page.getByText(tabItem.title).first()).toBeVisible({
         timeout: T,
       })
-      await expect(page.getByText(itemB.title).first()).toBeHidden({
-        timeout: T,
-      })
-      await expect(page.getByText("王五")).toBeHidden({ timeout: T })
+      const pickupCard = page.getByTestId("me-pickup-card")
+      await expect(pickupCard.first()).toBeHidden({ timeout: T })
 
       await pickupsTab.click()
-      await expect(page.getByText(itemB.title).first()).toBeVisible({
+      // 第 5 轮：/me 只做导航 —— 卡片上是物品标题 + 状态，不再内联姓名/手机号/揭晓
+      // （注意：页面顶部「我的信息」入口会显示本人的姓名 · 手机号，那是设计内行为，
+      //  所以这里只针对领取卡片断言，不用全页 getByText）
+      await expect(pickupCard.first()).toBeVisible({ timeout: T })
+      await expect(pickupCard.first()).toContainText(itemB.title, {
         timeout: T,
       })
-      await expect(page.getByText("王五")).toBeVisible({ timeout: T })
+      await expect(pickupCard.first()).not.toContainText("王五")
+      await expect(pickupCard.first()).not.toContainText("13700137000")
       await expect(page.getByText(tabItem.title).first()).toBeHidden({
         timeout: T,
       })
+
+      // 整卡点进物品详情
+      await pickupCard.first().click()
+      await page.waitForURL(new RegExp("/items/" + itemB.id + "$"), {
+        timeout: T,
+      })
+      await expect(
+        page.getByRole("heading", { name: itemB.title })
+      ).toBeVisible({ timeout: T })
     } finally {
       await context.close()
     }
@@ -231,7 +253,7 @@ test.describe("场景 8：UI 简化要求", () => {
       await expect(page.getByTestId("pickup-form")).toBeVisible({ timeout: T })
       await page.getByTestId("pickup-name").fill("李四")
       await page.getByTestId("pickup-phone").fill("13700137000")
-      await page.getByTestId("pickup-submit").click()
+      await submitClaimWithConfirm(page)
       // D-2 修复后：整屏对勾必须真的可见
       await expect(page.getByTestId("claim-success")).toBeVisible({
         timeout: T,

@@ -4,15 +4,19 @@ import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { z } from "zod"
 
-import { revealContact, withdrawItem } from "@/lib/db/found-items"
+import { withdrawItem } from "@/lib/db/found-items"
+import { updateMyProfile } from "@/lib/db/profiles"
 import { DbError } from "@/lib/db/types"
 import { createClient, getCurrentUser } from "@/lib/supabase/server"
-import type { RevealedContact } from "@/lib/types"
+import { profileSchema } from "@/lib/validation/schemas"
 
 export type WithdrawItemResult = { ok: boolean; message: string }
 
-export type RevealContactResult =
-  { ok: true; data: RevealedContact } | { ok: false; message: string }
+export type ProfileState = {
+  ok?: boolean
+  formError?: string
+  fieldErrors?: Record<string, string[] | undefined>
+}
 
 const itemIdSchema = z.object({ itemId: z.string().uuid("物品不存在") })
 
@@ -46,30 +50,30 @@ export async function withdrawItemAction(
   }
 }
 
-/** 揭晓拾主提供的联系方式 / 位置：仅拾主本人或已认领的人能拿到 */
-export async function revealContactAction(
-  itemId: string
-): Promise<RevealContactResult> {
+/** 保存「我的信息」（真实姓名 + 手机号）。成功由前端 toast 后回 /me。 */
+export async function saveProfileAction(
+  _prevState: ProfileState,
+  formData: FormData
+): Promise<ProfileState> {
   const user = await getCurrentUser()
-  if (!user) return { ok: false, message: "登录状态已失效，请重新登录" }
+  if (!user) redirect("/login")
 
-  const parsed = itemIdSchema.safeParse({ itemId })
+  const parsed = profileSchema.safeParse({
+    realName: formData.get("realName"),
+    phone: formData.get("phone"),
+  })
   if (!parsed.success) {
-    return {
-      ok: false,
-      message: parsed.error.issues[0]?.message ?? "参数不合法",
-    }
+    return { fieldErrors: z.flattenError(parsed.error).fieldErrors }
   }
 
   try {
     const supabase = await createClient()
-    const data = await revealContact(supabase, parsed.data.itemId)
-    if (!data) return { ok: false, message: "暂时拿不到联系方式" }
-    return { ok: true, data }
+    await updateMyProfile(supabase, user.id, parsed.data)
+    revalidatePath("/me")
+    return { ok: true }
   } catch (error) {
     return {
-      ok: false,
-      message: error instanceof DbError ? error.message : "暂时拿不到联系方式",
+      formError: error instanceof DbError ? error.message : "保存失败，请重试",
     }
   }
 }

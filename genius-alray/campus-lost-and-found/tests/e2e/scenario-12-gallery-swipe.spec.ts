@@ -11,8 +11,13 @@ import {
 
 const T = 30_000
 
-/** 场景 12（第 4 轮）：详情页相册支持左右滑动（motion drag），且无横向溢出 */
-test.describe("场景 12：相册左右滑动", () => {
+/**
+ * 场景 12（第 5 轮）：详情页相册改成原生 scroll-snap 轮播
+ * - 左右箭头已删除；用 gallery-track 的 scrollTo 驱动（原生滚动容器不响应 mouse 拖拽）
+ * - 计数器与圆点 aria-current 必须跟着滚动走
+ * - 页面无横向溢出
+ */
+test.describe("场景 12：相册 scroll-snap 轮播", () => {
   let ctx: TestContext
   let item: E2EItem
 
@@ -30,42 +35,37 @@ test.describe("场景 12：相册左右滑动", () => {
     await ctx.cleanup()
   })
 
-  test("拖拽相册：计数器 1/2 → 2/2 → 1/2，且页面无横向溢出", async ({
-    page,
-  }) => {
+  test("滚动切换 + 圆点同步 + 圆点跳转，且无横向溢出", async ({ page }) => {
     test.setTimeout(180_000)
     await signUpViaUi(page, uniqueUsername("swiper"))
     await page.goto("/items/" + item.id)
 
+    const track = page.getByTestId("gallery-track")
     const counter = page.getByTestId("gallery-counter")
+    await expect(track).toBeVisible({ timeout: T })
     await expect(counter).toHaveText("1/2", { timeout: T })
-    await expect(page.getByTestId("gallery-prev")).toBeDisabled()
+    await expect(page.getByTestId("gallery-dot-0")).toHaveAttribute(
+      "aria-current",
+      "true"
+    )
 
-    const image = page.getByRole("img", { name: item.title }).first()
-    await expect(image).toBeVisible({ timeout: T })
-    const box = await image.boundingBox()
-    expect(box).not.toBeNull()
-    const cx = box!.x + box!.width / 2
-    const cy = box!.y + box!.height / 2
-
-    // 向左拖 → 下一张
-    await page.mouse.move(cx, cy)
-    await page.mouse.down()
-    for (let step = 1; step <= 10; step += 1) {
-      await page.mouse.move(cx - step * 16, cy)
-    }
-    await page.mouse.up()
+    // 原生横向滚动到第二张（scroll-snap 容器；等价于手指左滑后的落点）
+    await track.evaluate((el) => {
+      el.scrollLeft = el.clientWidth
+    })
     await expect(counter).toHaveText("2/2", { timeout: T })
-    await expect(page.getByTestId("gallery-next")).toBeDisabled()
+    await expect(page.getByTestId("gallery-dot-1")).toHaveAttribute(
+      "aria-current",
+      "true"
+    )
 
-    // 向右拖 → 上一张
-    await page.mouse.move(cx, cy)
-    await page.mouse.down()
-    for (let step = 1; step <= 10; step += 1) {
-      await page.mouse.move(cx + step * 16, cy)
-    }
-    await page.mouse.up()
+    // 点第 1 个圆点跳回第一张
+    await page.getByTestId("gallery-dot-0").click()
     await expect(counter).toHaveText("1/2", { timeout: T })
+    await expect(page.getByTestId("gallery-dot-0")).toHaveAttribute(
+      "aria-current",
+      "true"
+    )
 
     // 移动端无横向溢出
     const overflow = await page.evaluate(

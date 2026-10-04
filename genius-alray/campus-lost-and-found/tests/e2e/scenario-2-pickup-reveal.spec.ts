@@ -5,6 +5,7 @@ import {
   createPublishedItem,
   newTestContext,
   signUpViaUi,
+  submitClaimWithConfirm,
   uniqueUsername,
   type E2EItem,
 } from "./helpers"
@@ -72,7 +73,7 @@ test.describe("场景 2：公开浏览 → 认领后揭晓", () => {
 
     await page.getByTestId("pickup-name").fill("李四")
     await page.getByTestId("pickup-phone").fill("13700137000")
-    await page.getByTestId("pickup-submit").click()
+    await submitClaimWithConfirm(page)
     // D-2 修复后：整屏对勾必须真的可见（服务端 revalidate 不得抢先重定向）
     await expect(page.getByTestId("claim-success")).toBeVisible({ timeout: T })
     await page.waitForURL(new RegExp("/items/" + item.id + "$"), { timeout: T })

@@ -47,11 +47,12 @@ test.describe("场景 9：reducedMotion=reduce 下的发布主流程", () => {
     })
     await uploadPhoto(page, "photo-1.png")
     await expect(page.getByText("已上传 1/5")).toBeVisible({ timeout: 60_000 })
-    // 第 3 轮起：拍完先出建议卡（1 张 → 建议补拍），等它落地再点下一步
-    await expect(page.getByTestId("photo-advice-retake")).toBeVisible({
+    // 第 5 轮：点「下一步」时统一检查一次；1 张 → 弹补拍对话框（减少动态效果下也必须正常出现）
+    await page.getByRole("button", { name: "下一步" }).click()
+    await expect(page.getByTestId("photo-advice-dialog")).toBeVisible({
       timeout: T,
     })
-    await page.getByRole("button", { name: "下一步" }).click()
+    await page.getByTestId("photo-advice-skip").click()
 
     await expect(page.locator("#title")).toBeVisible({ timeout: T })
     await expect(page.locator("#title")).not.toHaveValue("", {

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest"
 import {
+  photoAdviceSchema,
   pickupSchema,
+  profileSchema,
   publishItemSchema,
   signUpSchema,
   uploadMetaSchema,
@@ -191,5 +193,76 @@ describe("账号与上传元数据", () => {
   it("uploadMetaSchema 要求合法 uuid", () => {
     expect(uploadMetaSchema.safeParse({ batchId: ITEM_ID }).success).toBe(true)
     expect(uploadMetaSchema.safeParse({ batchId: "nope" }).success).toBe(false)
+  })
+})
+
+describe("第 5 轮：profileSchema 与 photoAdviceSchema", () => {
+  it("profileSchema：姓名 1 字/21 字失败，2 字与 20 字通过", () => {
+    const base = { phone: "13800138000" }
+    expect(profileSchema.safeParse({ ...base, realName: "张" }).success).toBe(
+      false
+    )
+    expect(
+      profileSchema.safeParse({ ...base, realName: "张".repeat(21) }).success
+    ).toBe(false)
+    expect(profileSchema.safeParse({ ...base, realName: "张三" }).success).toBe(
+      true
+    )
+    expect(
+      profileSchema.safeParse({ ...base, realName: "张".repeat(20) }).success
+    ).toBe(true)
+  })
+
+  it("profileSchema：手机号含字母/过短/过长失败，合法与 +-空格 通过", () => {
+    const base = { realName: "张三" }
+    for (const phone of [
+      "1380013800a",
+      "12345",
+      "1".repeat(21),
+      "电话13800138000",
+    ]) {
+      expect(profileSchema.safeParse({ ...base, phone }).success, phone).toBe(
+        false
+      )
+    }
+    expect(
+      profileSchema.safeParse({ ...base, phone: "13800138000" }).success
+    ).toBe(true)
+    expect(
+      profileSchema.safeParse({ ...base, phone: "+86 138-0013-8000" }).success
+    ).toBe(true)
+  })
+
+  it("profileSchema：姓名会 trim 后校验", () => {
+    const result = profileSchema.safeParse({
+      realName: "  张三  ",
+      phone: "13800138000",
+    })
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data.realName).toBe("张三")
+  })
+
+  it("photoAdviceSchema：verdict 只能是 ok/retake，reason 1-30 字", () => {
+    expect(
+      photoAdviceSchema.safeParse({ verdict: "ok", reason: "可以用" }).success
+    ).toBe(true)
+    expect(
+      photoAdviceSchema.safeParse({ verdict: "retake", reason: "再拍一张" })
+        .success
+    ).toBe(true)
+    expect(
+      photoAdviceSchema.safeParse({ verdict: "maybe", reason: "x" }).success
+    ).toBe(false)
+    expect(
+      photoAdviceSchema.safeParse({ verdict: "ok", reason: "" }).success
+    ).toBe(false)
+    expect(
+      photoAdviceSchema.safeParse({ verdict: "ok", reason: "x".repeat(31) })
+        .success
+    ).toBe(false)
+    // AI SDK 的 schema 不再用 boolean 字段（StepFun 对枚举更稳）
+    expect(photoAdviceSchema.safeParse({ ok: true, reason: "x" }).success).toBe(
+      false
+    )
   })
 })

@@ -15,8 +15,16 @@ import {
   SuccessOverlay,
   TapScale,
 } from "@/components/motion/primitives"
-import { AppHeader } from "@/components/nav/app-header"
+import { PageTitle } from "@/components/nav/title-bar"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -28,7 +36,7 @@ import {
   publishItemAction,
   reviewPhotosAction,
 } from "./actions"
-import type { CustodyKind, PhotoAdvice } from "@/lib/types"
+import type { CustodyKind } from "@/lib/types"
 
 // 与 lib/storage/validate.ts 保持一致（该模块 import 了 server-only，客户端不能引用）
 const MAX_EDGE = 1600
@@ -46,8 +54,6 @@ const STEPS = ["拍照", "确认", "怎么还"] as const
 
 type Phase = "idle" | "uploading" | "publishing"
 type AnalyzeState = "idle" | "running" | "done" | "error"
-/** 拍照建议：checking=检查中、ok=可以直接用、retake=建议补拍、none=没有建议（AI 不可用时静默降级） */
-type AdviceState = "idle" | "checking" | "ok" | "retake" | "none"
 
 type Photo = { path: string; preview: string }
 
@@ -161,10 +167,10 @@ export function PublishClient({ maxPhotos }: Props) {
   const [description, setDescription] = useState("")
   const [analyzeState, setAnalyzeState] = useState<AnalyzeState>("idle")
   const [analyzedKey, setAnalyzedKey] = useState("")
-  const [adviceState, setAdviceState] = useState<AdviceState>("idle")
-  const [advice, setAdvice] = useState<PhotoAdvice | null>(null)
-  /** 建议对应的照片指纹 */
-  const [adviceKey, setAdviceKey] = useState("")
+  /** 点「下一步」时正在让 AI 看一遍照片 */
+  const [checking, setChecking] = useState(false)
+  /** 非空 = 「建议补拍」对话框打开，内容是 AI 的一句话理由 */
+  const [retakeReason, setRetakeReason] = useState<string | null>(null)
 
   const [custody, setCustody] = useState<CustodyKind | "">("")
   const [contact, setContact] = useState("")
@@ -179,16 +185,6 @@ export function PublishClient({ maxPhotos }: Props) {
   /** 照片集合的指纹：变化即需要重新识别 */
   const analysisKey = paths.join("|")
 
-  /**
-   * 展示用的建议状态：建议必须对应当前这组照片。
-   * 照片集合一变（加/删）立刻退回「检查中」，不会残留过期建议。
-   */
-  const shownAdviceState: AdviceState =
-    (adviceState === "ok" || adviceState === "retake") &&
-    adviceKey !== analysisKey
-      ? "checking"
-      : adviceState
-
   const pathsRef = useRef<string[]>([])
   const keyRef = useRef("")
   const requestedRef = useRef("")
@@ -196,8 +192,8 @@ export function PublishClient({ maxPhotos }: Props) {
   const lastAnalyzeKeyRef = useRef("")
   /** 识别请求序号：看门狗超时后，迟到的返回不能再落地 */
   const analyzeSeqRef = useRef(0)
-  /** 建议请求序号：只有最后一次请求的结果能落地，避免过期建议 */
-  const reviewSeqRef = useRef(0)
+  /** 防止连点「下一步」重复发起检查 */
+  const checkBusyRef = useRef(false)
   /** 用户是否改过字段：识别结果不覆盖手写内容 */
   const editedRef = useRef({ title: false, description: false })
 
@@ -268,39 +264,6 @@ export function PublishClient({ maxPhotos }: Props) {
     }
   }, [])
 
-  /**
-   * 每拍完一张（或删掉一张）就对「当前全部照片」征求一次建议。
-   * 失败一律静默降级：不给建议、也不弹错误，流程照常可以「下一步」。
-   */
-  const runReview = useCallback(async (paths: string[]) => {
-    if (paths.length === 0) {
-      reviewSeqRef.current += 1
-      setAdvice(null)
-      setAdviceKey("")
-      setAdviceState("idle")
-      return
-    }
-
-    const seq = (reviewSeqRef.current += 1)
-    setAdviceState("checking")
-    try {
-      const result = await reviewPhotosAction(paths)
-      if (seq !== reviewSeqRef.current) return
-      if (!result.ok) {
-        setAdvice(null)
-        setAdviceState("none")
-        return
-      }
-      setAdvice(result.advice)
-      setAdviceKey(paths.join("|"))
-      setAdviceState(result.advice.ok ? "ok" : "retake")
-    } catch {
-      if (seq !== reviewSeqRef.current) return
-      setAdvice(null)
-      setAdviceState("none")
-    }
-  }, [])
-
   // 进入第 2 屏自动识别；照片集合变化后重新识别
   useEffect(() => {
     if (step !== 1 || !analysisKey) return
@@ -320,9 +283,15 @@ export function PublishClient({ maxPhotos }: Props) {
 
   const busy = isPending || phase !== "idle"
   const remaining = Math.max(0, maxPhotos - photos.length)
-  const canLeavePhotoStep = photos.length > 0 && !busy
+  const canLeavePhotoStep = photos.length > 0 && !busy && !checking
   const canLeaveInfoStep =
     title.trim().length > 0 && description.trim().length > 0 && !busy
+
+  /** 标题栏的「返回」：第 2/3 屏退回上一步（稳定引用，避免每次渲染都重注册） */
+  const handleHeaderBack = useCallback(() => {
+    goTo(step - 1)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step])
 
   function goTo(next: number) {
     setDirection(next > step ? 1 : -1)
@@ -336,6 +305,31 @@ export function PublishClient({ maxPhotos }: Props) {
       setAnalyzeState("running")
     }
     setStep(next)
+  }
+
+  /**
+   * 拍照屏的「下一步」：只在这里让 AI 看一次照片。
+   * - 通过 / 服务端失败 / 异常 → 直接进第 2 屏（建议永远不阻塞，也不弹错误）；
+   * - 建议补拍 → 只弹一个对话框，用户可以「仍然继续」。
+   */
+  async function handlePhotoNext() {
+    if (checkBusyRef.current || photos.length === 0) return
+    checkBusyRef.current = true
+    setChecking(true)
+    try {
+      const result = await reviewPhotosAction(pathsRef.current)
+      if (result.ok && !result.advice.ok) {
+        setRetakeReason(result.advice.reason.trim() || "换个角度再拍一张")
+        return
+      }
+      goTo(1)
+    } catch {
+      // 服务端失败静默降级：直接进入第 2 屏
+      goTo(1)
+    } finally {
+      checkBusyRef.current = false
+      setChecking(false)
+    }
   }
 
   function openPicker() {
@@ -380,28 +374,21 @@ export function PublishClient({ maxPhotos }: Props) {
       setPhase("uploading")
       const uploaded: Photo[] = []
 
-      try {
-        for (let index = 0; index < batch.length; index += 1) {
-          setUploadNote(
-            "正在上传第 " + (index + 1) + "/" + batch.length + " 张…"
-          )
-          const compressed = await compressImage(batch[index])
-          const path = await uploadImage(compressed, batchId)
-          const photo = { path, preview: URL.createObjectURL(compressed) }
-          uploaded.push(photo)
-          // 逐张入 state：整批中途失败时，已成功的照片不能丢（否则预览 URL 与存储对象都成孤儿）
-          pathsRef.current = [...pathsRef.current, photo.path]
-          setPhotos((prev) => [...prev, photo])
-        }
-
-        toast.add({
-          type: "success",
-          title: "已上传 " + uploaded.length + " 张照片",
-        })
-      } finally {
-        // 这一批结束（含中途失败）就对当前全部照片征求一次建议（失败静默降级）
-        if (uploaded.length > 0) void runReview(pathsRef.current)
+      for (let index = 0; index < batch.length; index += 1) {
+        setUploadNote("正在上传第 " + (index + 1) + "/" + batch.length + " 张…")
+        const compressed = await compressImage(batch[index])
+        const path = await uploadImage(compressed, batchId)
+        const photo = { path, preview: URL.createObjectURL(compressed) }
+        uploaded.push(photo)
+        // 逐张入 state：整批中途失败时，已成功的照片不能丢（否则预览 URL 与存储对象都成孤儿）
+        pathsRef.current = [...pathsRef.current, photo.path]
+        setPhotos((prev) => [...prev, photo])
       }
+
+      toast.add({
+        type: "success",
+        title: "已上传 " + uploaded.length + " 张照片",
+      })
     })
   }
 
@@ -413,10 +400,7 @@ export function PublishClient({ maxPhotos }: Props) {
       if (target) URL.revokeObjectURL(target.preview)
       setPhotos((prev) => prev.filter((photo) => photo.path !== path))
       setRemoving((prev) => prev.filter((item) => item !== path))
-      // 删完立刻用剩下的照片重新问一次，不留过期建议
-      const nextPaths = pathsRef.current.filter((item) => item !== path)
-      pathsRef.current = nextPaths
-      void runReview(nextPaths)
+      pathsRef.current = pathsRef.current.filter((item) => item !== path)
     }, DURATION.fast * 1000)
   }
 
@@ -519,12 +503,14 @@ export function PublishClient({ maxPhotos }: Props) {
 
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-4">
-      {/* 第 2/3 屏的「返回」退回上一步；只有第 1 屏才真的回首页 */}
-      <AppHeader
+      {/*
+        标题栏由 layout 统一提供（components/nav/title-bar.tsx），页面里不再自己画。
+        这里只覆盖「返回」：第 2/3 屏退回上一步，第 1 屏沿用路由默认（回首页）。
+        onBack 用 useCallback 稳定引用，避免每次渲染都重新注册标题栏配置。
+      */}
+      <PageTitle
         title="发布招领"
-        backHref="/"
-        backLabel="返回"
-        onBack={step === 0 ? undefined : () => goTo(step - 1)}
+        onBack={step === 0 ? undefined : handleHeaderBack}
       />
 
       <nav aria-label="发布步骤" className="flex flex-col gap-2">
@@ -578,13 +564,8 @@ export function PublishClient({ maxPhotos }: Props) {
         className="flex min-w-0 flex-1 flex-col"
       >
         {step === 0 ? (
-          <div
-            className={cn(
-              "flex min-w-0 flex-col gap-4",
-              // 没有照片时内容不多：整块（大按钮 + 提示 + 下一步）一起垂直居中
-              photos.length === 0 ? "my-auto" : "flex-1"
-            )}
-          >
+          // 这一屏只做拍照，内容不多：整块（大按钮 / 网格 + 下一步）垂直居中
+          <div className="my-auto flex min-w-0 flex-col gap-4">
             {photos.length === 0 ? (
               <TapScale>
                 <Button
@@ -650,83 +631,23 @@ export function PublishClient({ maxPhotos }: Props) {
               </div>
             )}
 
-            {photos.length > 0 ? (
-              <div data-testid="photo-advice">
-                <FadeIn key={shownAdviceState}>
-                  {shownAdviceState === "checking" ? (
-                    <p
-                      data-testid="photo-advice-checking"
-                      role="status"
-                      className="rounded-2xl bg-muted px-3 py-2 text-sm text-muted-foreground"
-                    >
-                      AI 正在看这张照片…
-                    </p>
-                  ) : shownAdviceState === "ok" && advice ? (
-                    <div
-                      data-testid="photo-advice-ok"
-                      className="rounded-2xl bg-muted px-3 py-2"
-                    >
-                      <p className="text-sm font-medium">可以直接用</p>
-                      <p className="text-xs text-muted-foreground">
-                        {advice.reason}
-                      </p>
-                    </div>
-                  ) : shownAdviceState === "retake" && advice ? (
-                    <div
-                      data-testid="photo-advice-retake"
-                      className="rounded-2xl bg-muted px-3 py-2"
-                    >
-                      <p className="text-sm font-medium">建议补拍</p>
-                      <p className="text-xs text-muted-foreground">
-                        {advice.reason}
-                      </p>
-                    </div>
-                  ) : null}
-                </FadeIn>
-              </div>
-            ) : null}
-
-            <p className="text-xs text-muted-foreground">
-              {`拍清楚一点，最多 ${maxPhotos} 张`}
-            </p>
-
             {phase === "uploading" ? (
               <p className="text-sm text-muted-foreground" role="status">
                 {uploadNote || "正在上传照片…"}
               </p>
             ) : null}
 
-            <div className="mt-auto flex min-w-0 gap-2 pt-2">
-              {shownAdviceState === "retake" ? (
-                <TapScale className="flex-1">
-                  <Button
-                    type="button"
-                    size="lg"
-                    variant="outline"
-                    className="h-12 w-full text-base"
-                    disabled={busy}
-                    onClick={openPicker}
-                  >
-                    继续拍照
-                  </Button>
-                </TapScale>
-              ) : null}
-              <TapScale
-                className={cn(
-                  shownAdviceState === "retake" ? "flex-1" : "w-full"
-                )}
+            <TapScale>
+              <Button
+                type="button"
+                size="lg"
+                className="h-12 w-full text-base"
+                disabled={!canLeavePhotoStep}
+                onClick={handlePhotoNext}
               >
-                <Button
-                  type="button"
-                  size="lg"
-                  className="h-12 w-full text-base"
-                  disabled={!canLeavePhotoStep}
-                  onClick={() => goTo(1)}
-                >
-                  下一步
-                </Button>
-              </TapScale>
-            </div>
+                下一步
+              </Button>
+            </TapScale>
           </div>
         ) : null}
 
@@ -902,10 +823,54 @@ export function PublishClient({ maxPhotos }: Props) {
       </StepTransition>
 
       <LoadingOverlay
+        show={checking}
+        message="AI 正在看照片…"
+        testId="photo-check-loading"
+      />
+
+      <LoadingOverlay
         show={analyzeState === "running"}
         message="AI 正在写描述…"
         testId="analyze-loading"
       />
+
+      {/* 建议补拍：只是建议，用户可以「仍然继续」 */}
+      <Dialog
+        open={retakeReason !== null}
+        onOpenChange={(open) => {
+          if (!open) setRetakeReason(null)
+        }}
+      >
+        <DialogContent
+          data-testid="photo-advice-dialog"
+          showCloseButton={false}
+        >
+          <DialogHeader>
+            <DialogTitle>建议补拍</DialogTitle>
+            <DialogDescription>{retakeReason ?? ""}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="secondary"
+              data-testid="photo-advice-retake"
+              onClick={() => setRetakeReason(null)}
+            >
+              继续拍照
+            </Button>
+            <Button
+              type="button"
+              data-testid="photo-advice-skip"
+              onClick={() => {
+                setRetakeReason(null)
+                goTo(1)
+              }}
+            >
+              仍然继续
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <SuccessOverlay
         show={published}

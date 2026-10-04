@@ -42,12 +42,22 @@ insert into public.app_config (id) values (true);
 -- ============================================================
 -- 用户资料（由 auth.users 触发器自动创建）
 -- ============================================================
+-- real_name / phone 是「个人信息」：初始为 null，用户可以在「我的信息」里填写，
+-- 也可以在认领时补齐（create_pickup 会把这次提交的姓名/手机号一并存回来，下次认领直接复用）。
 create table public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   username text not null unique,
+  real_name text,
+  phone text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint profiles_username_format check (username ~ '^[a-z0-9_]{3,20}$')
+  constraint profiles_username_format check (username ~ '^[a-z0-9_]{3,20}$'),
+  constraint profiles_real_name_len check (
+    real_name is null or char_length(btrim(real_name)) between 2 and 20
+  ),
+  constraint profiles_phone_format check (
+    phone is null or phone ~ '^[0-9+\- ]{6,20}$'
+  )
 );
 create trigger profiles_touch before update on public.profiles
   for each row execute function public.touch_updated_at();

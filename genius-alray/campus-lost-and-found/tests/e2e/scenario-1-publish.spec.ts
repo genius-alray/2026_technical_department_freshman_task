@@ -46,25 +46,21 @@ test.describe("场景 1：发布三步向导（含拍照建议与全屏加载）
       timeout: T,
     })
 
-    // 第 1 张 → mock review 建议补拍
+    // 第 1 张（第 5 轮：上传时不再内联给建议，点「下一步」才统一检查一次）
     await uploadPhoto(page, "photo-1.png")
     await expect(page.getByText("已上传 1/5")).toBeVisible({ timeout: 60_000 })
-    await expect(page.getByTestId("photo-advice-retake")).toBeVisible({
-      timeout: T,
-    })
-    await expect(page.getByRole("button", { name: "继续拍照" })).toBeVisible({
-      timeout: T,
-    })
+    await expect(page.getByTestId("photo-advice-dialog")).toHaveCount(0)
 
-    // 第 2 张 → 可以直接用
+    // 第 2 张 → 点「下一步」：先全屏检查，再进第 2 屏（2 张 → mock 通过）
     await uploadPhoto(page, "photo-2.png")
     await expect(page.getByText("已上传 2/5")).toBeVisible({ timeout: 60_000 })
-    await expect(page.getByTestId("photo-advice-ok")).toBeVisible({
+    await page.getByRole("button", { name: "下一步" }).click()
+    await expect(page.getByTestId("photo-check-loading")).toBeVisible({
       timeout: T,
     })
+    await expect(page.getByTestId("photo-advice-dialog")).toHaveCount(0)
 
-    // 第 2 屏：点下一步后进入全屏加载（mock 延时 800ms），期间不许有输入框
-    await page.getByRole("button", { name: "下一步" }).click()
+    // 第 2 屏：AI 写描述时同样是全屏加载，期间不许有输入框
     await expect(page.getByTestId("analyze-loading")).toBeVisible({
       timeout: T,
     })

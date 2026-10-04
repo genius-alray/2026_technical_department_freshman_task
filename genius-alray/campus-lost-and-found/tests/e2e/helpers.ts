@@ -151,6 +151,18 @@ export function newTestContext(): TestContext {
 }
 
 /**
+ * 第 5 轮：认领改为「先弹诚信确认，再写入」。
+ * 点「确认认领」→ 等 Dialog → 点「我确认」。
+ */
+export async function submitClaimWithConfirm(page: Page): Promise<void> {
+  await page.getByTestId("pickup-submit").click()
+  await expect(page.getByTestId("claim-confirm")).toBeVisible({
+    timeout: 30_000,
+  })
+  await page.getByTestId("claim-confirm-ok").click()
+}
+
+/**
  * 清理「通过 UI 注册」的账号：ctx.cleanup() 只知道 API 侧创建的用户，
  * 这里按用户名反查 id，删除其私有桶对象（{uid}/{itemId}/{uuid}.ext 两级目录）
  * 后再删用户（级联物品/图片/领取记录）。

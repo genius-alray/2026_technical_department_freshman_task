@@ -60,9 +60,10 @@ revoke all on public.profiles, public.found_items, public.found_item_images,
   public.pickups, public.app_config
   from anon, authenticated;
 
--- profiles
-grant select (id, username, created_at, updated_at) on public.profiles to authenticated;
-grant update (username) on public.profiles to authenticated;
+-- profiles：RLS 只允许读/改自己那一行，所以姓名与手机号放在这里安全。
+grant select (id, username, real_name, phone, created_at, updated_at)
+  on public.profiles to authenticated;
+grant update (username, real_name, phone) on public.profiles to authenticated;
 
 -- found_items
 -- 【关键】可读列**不含** contact / location_lat / location_lng / location_label。

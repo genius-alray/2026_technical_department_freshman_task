@@ -1,8 +1,8 @@
 import type { Metadata } from "next"
-import Link from "next/link"
 import { notFound, redirect } from "next/navigation"
-import { ArrowLeftIcon, PhoneIcon, UsersIcon } from "lucide-react"
+import { PhoneIcon, UsersIcon } from "lucide-react"
 
+import { PageTitle } from "@/components/nav/title-bar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -65,28 +65,17 @@ export default async function ItemPickupsPage({
   const pickups = await listItemPickups(supabase, id)
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-4">
-      <div className="flex items-center gap-2">
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          aria-label="返回我的"
-          nativeButton={false}
-          render={<Link href="/me" />}
-        >
-          <ArrowLeftIcon aria-hidden />
-        </Button>
-        <h2 className="min-w-0 flex-1 truncate font-heading text-lg font-semibold">
-          {item.title}
-        </h2>
+    <div className="flex min-w-0 flex-1 flex-col gap-4 px-4 py-4">
+      <PageTitle title="认领人" subtitle={item.title} />
+
+      <div className="flex min-w-0 items-center gap-2">
         <Badge variant={STATUS_BADGE_VARIANT[item.status]}>
           {ITEM_STATUS_LABEL[item.status]}
         </Badge>
+        <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+          认领后物品已标记为已认领，请与认领人核对后归还
+        </p>
       </div>
-
-      <p className="text-xs text-muted-foreground">
-        认领后物品已标记为已认领，请与认领人核对后归还
-      </p>
 
       {item.status === "published" ? (
         <div className="flex flex-wrap items-center gap-2">

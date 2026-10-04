@@ -166,4 +166,38 @@ describe("矩阵 6：create_pickup（认领即归属）", () => {
     )
     expect(result.error?.code).toBe("P0002")
   })
+
+  it("第 5 轮：认领会把姓名/手机号写回 profiles（下次可直接预填）", async () => {
+    const fresh = await freshItem("写回个人信息")
+    // 先把 picker 的 profile 清空，确保是「认领写回」而不是残留
+    await ctx.admin
+      .from("profiles")
+      .update({ real_name: null, phone: null })
+      .eq("id", picker.id)
+
+    const result = await createPickupRaw(
+      picker,
+      fresh.id,
+      "王五",
+      "13700137000"
+    )
+    expect(result.error).toBeNull()
+
+    const profile = await ctx.admin
+      .from("profiles")
+      .select("real_name, phone")
+      .eq("id", picker.id)
+      .single()
+    expect(profile.data?.real_name).toBe("王五")
+    expect(profile.data?.phone).toBe("13700137000")
+
+    // 与 pickups 行保持一致
+    const pickup = await ctx.admin
+      .from("pickups")
+      .select("picker_name, picker_phone")
+      .eq("id", result.data as string)
+      .single()
+    expect(pickup.data?.picker_name).toBe(profile.data?.real_name)
+    expect(pickup.data?.picker_phone).toBe(profile.data?.phone)
+  })
 })

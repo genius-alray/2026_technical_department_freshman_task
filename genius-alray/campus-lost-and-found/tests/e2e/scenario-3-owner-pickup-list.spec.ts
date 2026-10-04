@@ -5,6 +5,7 @@ import {
   newTestContext,
   signInViaUi,
   signUpViaUi,
+  submitClaimWithConfirm,
   uniqueUsername,
   type E2EItem,
 } from "./helpers"
@@ -55,7 +56,7 @@ test.describe("场景 3：拾主查看认领人名单", () => {
       ).toBeVisible({ timeout: T })
       await pickerPage.getByTestId("pickup-name").fill("王五")
       await pickerPage.getByTestId("pickup-phone").fill("13700137000")
-      await pickerPage.getByTestId("pickup-submit").click()
+      await submitClaimWithConfirm(pickerPage)
       // D-2 修复后：整屏对勾必须真的可见
       await expect(pickerPage.getByTestId("claim-success")).toBeVisible({
         timeout: T,

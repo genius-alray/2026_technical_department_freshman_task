@@ -205,6 +205,11 @@ begin
      where id = p_item_id;
   end if;
 
+  -- 顺手把这次用的姓名/手机号存成「我的信息」，下次认领直接复用（不必再输一遍）
+  update public.profiles
+     set real_name = v_name, phone = v_phone
+   where id = v_uid;
+
   return v_id;
 end;
 $$;

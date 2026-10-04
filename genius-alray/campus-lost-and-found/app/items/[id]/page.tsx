@@ -3,7 +3,7 @@ import Link from "next/link"
 import { notFound, redirect } from "next/navigation"
 import { ClockIcon, HandHeartIcon } from "lucide-react"
 
-import { AppHeader } from "@/components/nav/app-header"
+import { PageTitle } from "@/components/nav/title-bar"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -61,13 +61,8 @@ export default async function ItemDetailPage({
 
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-4 px-4 py-5">
-      {/* 全页唯一的 h1 就是这个标题 */}
-      <AppHeader
-        title={item.title}
-        backHref="/"
-        backLabel="返回失物墙"
-        backTestId="item-back"
-      />
+      {/* 标题栏（全局）已显示物品名称，正文里不再重复大标题；返回与 item-back 走路由默认 */}
+      <PageTitle title={item.title} />
 
       <ItemGallery images={signed} title={item.title} />
 

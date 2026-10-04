@@ -1,10 +1,11 @@
 import type { Metadata } from "next"
 import { notFound, redirect } from "next/navigation"
 
-import { AppHeader } from "@/components/nav/app-header"
 import { getItem } from "@/lib/db/found-items"
 import { listMyPickups } from "@/lib/db/pickups"
+import { getMyProfile } from "@/lib/db/profiles"
 import { createClient, getCurrentUser } from "@/lib/supabase/server"
+import { isProfileComplete } from "@/lib/types"
 
 import { ClaimForm } from "./claim-form"
 
@@ -16,6 +17,7 @@ export const dynamic = "force-dynamic"
 
 /**
  * 认领独立一屏：只有「寻找失主中」且不是自己发布的物品可以认领。
+ * 标题栏默认给「认领物品」+ 返回物品页（pickup-cancel），页面不需要自己画。
  *
  * 【为什么已认领还要放行一次】认领成功会 revalidate 当前路由，
  * 服务端组件会带着 status=claimed 重新渲染。如果这时直接 redirect，
@@ -51,16 +53,17 @@ export default async function ClaimItemPage({
     redirect("/items/" + id)
   }
 
+  const profile = await getMyProfile(supabase, user.id)
+
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-4 px-4 py-5">
-      <AppHeader
-        title="认领物品"
-        backHref={"/items/" + id}
-        backLabel="返回物品"
-        backTestId="pickup-cancel"
+      <ClaimForm
+        itemId={item.id}
+        claimedByMe={mine}
+        defaultName={profile?.real_name ?? ""}
+        defaultPhone={profile?.phone ?? ""}
+        profileComplete={isProfileComplete(profile)}
       />
-
-      <ClaimForm itemId={item.id} claimedByMe={mine} />
     </div>
   )
 }
