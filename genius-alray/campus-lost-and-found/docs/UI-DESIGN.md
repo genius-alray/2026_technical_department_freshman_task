@@ -102,7 +102,7 @@ Server Component 优先用 CSS 反馈，不要为动效改成客户端组件；�
 
 - 「添加到主屏幕」后以 **standalone** 打开（没有地址栏）：清单在 `app/manifest.ts`，图标在 `public/icons/`
   （`icon.svg` 是源文件，导出 192/512 与满幅 maskable；iOS 主屏图标是 `app/apple-icon.png`）。
-- 状态栏颜色跟主题走：manifest 里是白色，深色下由 `layout.tsx` 的 `viewport.themeColor` 覆盖成 `#0a0a0a`。
+- 状态栏颜色跟主题走：manifest 的 `theme_color` 是品牌青柠 `#9ae600`（见 `app/manifest.ts`），页面里由 `layout.tsx` 的 `viewport.themeColor` 按主题给 `#ffffff` / `#0a0a0a`。
 - **离线页 `/offline` 必须免登录可达**（它被 Service Worker 预缓存）：否则未登录访客装的 PWA 会把登录页当成离线页。
 - Service Worker（`public/sw.js`）只在**生产构建**注册，且只缓存静态资源与离线页；
   业务页面（含登录态的 HTML）一律 network-first、不写缓存。

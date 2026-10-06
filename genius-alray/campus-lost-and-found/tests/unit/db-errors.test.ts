@@ -1,6 +1,6 @@
 import type { PostgrestError } from "@supabase/supabase-js"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
-import { createPickup, publishItem } from "../helpers/fixtures"
+import { createPickup, createUploads, publishItem } from "../helpers/fixtures"
 import {
   createTestContext,
   type TestContext,
@@ -93,11 +93,7 @@ describe("lib/db 封装在真实 RPC 错误上的表现（第 4 轮语义）", (
 
   it("createPickup 对不存在的物品 → 「物品不存在」（P0002 中文透出）", async () => {
     try {
-      await dbCreatePickup(other.client, {
-        itemId: crypto.randomUUID(),
-        name: "张三",
-        phone: "13800138000",
-      })
+      await dbCreatePickup(other.client, crypto.randomUUID())
       throw new Error("本应失败")
     } catch (error) {
       expect(error).toBeInstanceOf(DbError)
@@ -108,11 +104,7 @@ describe("lib/db 封装在真实 RPC 错误上的表现（第 4 轮语义）", (
 
   it("拾主认领自己的物品 → 「不能认领自己发布的物品」（42501 中文透出）", async () => {
     try {
-      await dbCreatePickup(owner.client, {
-        itemId,
-        name: "拾主本人",
-        phone: "13800138000",
-      })
+      await dbCreatePickup(owner.client, itemId)
       throw new Error("本应失败")
     } catch (error) {
       expect((error as DbError).code).toBe("42501")
@@ -121,13 +113,9 @@ describe("lib/db 封装在真实 RPC 错误上的表现（第 4 轮语义）", (
   })
 
   it("第 7 轮：别人也能认领已被认领的物品（多人认领，靠线下协商）", async () => {
-    await createPickup(picker, itemId, "李四", "13900139000")
+    await createPickup(picker, itemId)
     // 不再抛错：第二个认领人登记成功，物品保持 claimed
-    await dbCreatePickup(other.client, {
-      itemId,
-      name: "王五",
-      phone: "13700137000",
-    })
+    await dbCreatePickup(other.client, itemId)
     const rows = await listItemPickups(owner.client, itemId)
     expect(rows.length).toBe(2)
   })
@@ -173,6 +161,8 @@ describe("lib/db 封装在真实 RPC 错误上的表现（第 4 轮语义）", (
   })
 
   it("publishItem 参数不合法 → 「代为保管需要填写联系方式（至少 5 个字符）」", async () => {
+    // 用真实登记行：这条用例考的是参数校验，不该先被「照片不存在」拦下
+    const uploads = await createUploads(owner.id, 1)
     try {
       await dbPublishItem(owner.client, {
         title: "缺少联系方式",
@@ -182,7 +172,7 @@ describe("lib/db 封装在真实 RPC 错误上的表现（第 4 轮语义）", (
         lat: null,
         lng: null,
         locationLabel: "",
-        paths: [owner.id + "/x.jpg"],
+        uploadIds: uploads.map((upload) => upload.id),
       })
       throw new Error("本应失败")
     } catch (error) {
@@ -206,7 +196,9 @@ describe("lib/db 封装在真实 RPC 错误上的表现（第 4 轮语义）", (
 
     const pickups = await listItemPickups(owner.client, itemId)
     expect(pickups.length).toBeGreaterThanOrEqual(1)
-    expect(pickups.some((row) => row.picker_name === "李四")).toBe(true)
+    expect(pickups.some((row) => row.picker_name === picker.realName)).toBe(
+      true
+    )
   })
 
   it("withdrawItem 成功撤单后从墙上消失", async () => {

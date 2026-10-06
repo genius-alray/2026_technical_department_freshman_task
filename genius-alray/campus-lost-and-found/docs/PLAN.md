@@ -51,11 +51,13 @@
       api/upload/route.ts           唯一 REST endpoint
       manifest.ts                   PWA 清单（Next 约定文件 → /manifest.webmanifest）
       offline/                      离线回退页（Service Worker 预缓存，免登录可达）
+      terms/, privacy/              服务条款 / 隐私政策
     public/
       sw.js                         Service Worker（只在生产构建里注册）
       icons/                        图标：icon.svg 源文件 + 192/512/maskable PNG
     lib/
       types.ts                      类型与 AI 接口（Lead 冻结）
+      env.ts                        zod 校验环境变量 + phoneToEmail（手机号 ↔ 内部邮箱）
       validation/schemas.ts         zod schema
       geo.ts                        WGS84 → GCJ-02 + 高德 URL
       db/{found-items,pickups,profiles,types}.ts
@@ -66,11 +68,13 @@
       motion/{primitives,motion-provider}.tsx   动效统一出口（只准用，不准各自写）
       nav/title-bar.tsx                         全站唯一的标题栏（含「安装应用」与首页右上角「我的」入口）
       media/skeleton-image.tsx                  带骨架屏的图片（全站图片统一用它）
+      contact/{phone-link,location-link}.tsx    电话 / 位置（蓝色 + 二次确认，必须复用）
+      claim/release-claim.tsx                   撤回认领（共享件）
       pwa/service-worker-register.tsx           注册 Service Worker（仅生产构建）
       pwa/status-bar-keeper.tsx                 镜像状态栏 meta，防止路由切换时闪白
       pwa/install-prompt.tsx                    拦截浏览器安装提示 + 首页「安装应用」按钮
       ui/**                                     shadcn 组件
-    supabase/migrations/            5 个迁移（extensions / core / rls_and_grants / rpcs / storage）
+    supabase/migrations/            7 个迁移（extensions / core / rls_and_grants / rpcs / storage / uploads_and_limits / publish_draft）
     tests/{unit,rls,e2e,live,helpers}/
 
 ### 1.3 数据访问纪律
@@ -108,7 +112,7 @@
 | ----------- | ---------------- | ------------------------------------------------------------------------ |
 | 单元 + 组件 | `pnpm test:unit` | mock 确定性、zod schema、错误码映射、源码纪律                            |
 | 安全矩阵    | `pnpm test:rls`  | 列级保密、写权限只走 RPC、认领可见性与多人认领、发布校验（13 条见 VERIFICATION §2） |
-| E2E         | `pnpm test:e2e`  | 12 个按功能划分的 spec：发布向导 / 认领 / 多人认领 / 撤单与撤回 / 我的 / 列级隐私 / 失物墙 / 相册 / reduced-motion / 标题栏 / PWA 外壳 / 骨架屏 |
+| E2E         | `pnpm test:e2e`  | 13 个按功能划分的 spec：发布向导 / 认领 / 多人认领 / 撤单与撤回 / 我的 / 列级隐私 / 失物墙 / 相册 / reduced-motion / 标题栏 / PWA 外壳 / 骨架屏 / 发布草稿；跑的是 `pnpm build && pnpm start` 的产物 |
 | 真机 AI     | `pnpm test:live` | DeepSeek `deepseek-flash` 的拍照识别可用（默认跳过，需 AI_PROVIDER=ai-sdk） |
 | 全量        | `pnpm verify`    | 以上除 live 之外的全部                                                   |
 
@@ -128,23 +132,23 @@
 | Lead       | supabase/migrations、lib/**、docs/**、proxy.ts、最终集成与终验 |
 | ui-shell   | app/layout.tsx、app/me/**、components/nav/**、app/(auth)/**    |
 | found-flow | app/publish/**、app/api/upload/**                              |
-| lost-claim | app/page.tsx、app/items/**                                     |
+| lost-claim | app/(wall)/page.tsx、app/items/**                              |
 | verifier   | tests/**、docs/VERIFICATION.md                                 |
 
 **第 2 轮（UI 简约化 + 动效）**：Lead 先交付共享件（`components/motion/**`、`components/nav/title-bar.tsx`、`app/template.tsx`、`app/layout.tsx`、删除底栏），再并行三个实现者，最后独立验证。
 
-| 角色           | 写作用域                                                                                       | 交付                                                      |
-| -------------- | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| 角色           | 写作用域                                                                                      | 交付                                                      |
+| -------------- | --------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
 | Lead           | components/motion/**、components/nav/title-bar.tsx、app/template.tsx、app/layout.tsx、docs/** | 动效原语、标题栏、页面入场、规范与需求同步、终验          |
-| publish-wizard | app/publish/**                                                                                 | 三步向导 + 步骤动效                                       |
-| wall-detail    | app/page.tsx、app/items/**                                                                     | 首页「我的」入口、瀑布流入场、详情与领取动效              |
-| me-auth        | app/me/**、app/(auth)/**                                                                       | 双标签页、卡片淡出、文案精简                              |
-| verifier       | tests/**、docs/VERIFICATION.md                                                                 | 更新场景 1、新增场景 8/9、全量 verify + build、对抗式反证 |
+| publish-wizard | app/publish/**                                                                                | 三步向导 + 步骤动效                                       |
+| wall-detail    | app/(wall)/page.tsx、app/items/**                                                             | 首页「我的」入口、瀑布流入场、详情与领取动效              |
+| me-auth        | app/me/**、app/(auth)/**                                                                      | 双标签页、卡片淡出、文案精简                              |
+| verifier       | tests/**、docs/VERIFICATION.md                                                                | 更新场景 1、新增场景 8/9、全量 verify + build、对抗式反证 |
 
 **第 7–9 轮（账号改手机号 / UI 精简 / 文档与测试收敛）**：由 Lead 单人完成（改动横跨迁移、页面、测试与文档，
 拆成并行写作用域反而会产生互相覆盖；独立验证仍由 `pnpm verify` + `pnpm build` + `pnpm test:live` 承担）。
-测试从「按轮次累积的 16 个 spec」收敛为**按功能划分的 10 个 spec**：删掉重复的发布/认领主链路，
-只保留每类行为的一条主链路 + 各自的特有断言。
+测试从「按轮次累积的 16 个 spec」收敛为**按功能划分的 spec**：删掉重复的发布/认领主链路，
+只保留每类行为的一条主链路 + 各自的特有断言；第 11、13 轮各补 1 个，第 10 轮补 1 个（草稿），现共 13 个（见 §3）。
 
 ---
 

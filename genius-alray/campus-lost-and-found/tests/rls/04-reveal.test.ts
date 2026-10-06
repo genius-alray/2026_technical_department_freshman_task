@@ -93,7 +93,7 @@ describe("矩阵 5：揭晓联系方式的授权边界", () => {
     const before = await revealRaw(picker, keptId)
     expect(before.error?.code).toBe("42501")
 
-    await createPickup(picker, keptId, "李四", "13900139000")
+    await createPickup(picker, keptId)
     expect(await itemStatus(ctx, keptId)).toBe("claimed")
 
     const after = await revealRaw(picker, keptId)

@@ -119,7 +119,8 @@ export async function publishItem(
     lat: number | null
     lng: number | null
     locationLabel: string
-    paths: string[]
+    /** image_uploads.id 列表：照片归属由 RPC 按登记行校验，不再传路径 */
+    uploadIds: string[]
   }
 ): Promise<string> {
   return unwrap(
@@ -131,7 +132,7 @@ export async function publishItem(
       p_location_lat: input.lat ?? undefined,
       p_location_lng: input.lng ?? undefined,
       p_location_label: input.locationLabel ? input.locationLabel : undefined,
-      p_paths: input.paths,
+      p_upload_ids: input.uploadIds,
     })
   )
 }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest"
+import { createUploads } from "../helpers/fixtures"
 import { createTestContext } from "../helpers/supabase"
 
 /**
@@ -60,17 +61,29 @@ describe("RPC 契约守卫：只给必填参数也能被解析", () => {
     }
   }, 60_000)
 
-  it("create_pickup：只给三个必填参数 → P0002 而不是 PGRST202", async () => {
+  it("create_pickup：只给物品 id → P0002 而不是 PGRST202", async () => {
     const ctx = createTestContext()
     try {
       const user = await ctx.user("pick")
       const result = await user.client.rpc("create_pickup", {
         p_item_id: crypto.randomUUID(),
-        p_name: "张三",
-        p_phone: "13800138000",
       })
       expectResolved(result.error)
       expect(result.error?.code).toBe("P0002")
+    } finally {
+      await ctx.cleanup()
+    }
+  }, 60_000)
+
+  it("consume_ai_quota：无参数调用返回配额结果，而不是 PGRST202", async () => {
+    const ctx = createTestContext()
+    try {
+      const user = await ctx.user("quota")
+      const result = await user.client.rpc("consume_ai_quota", {})
+      expectResolved(result.error)
+      expect(result.error).toBeNull()
+      expect(result.data?.[0]?.out_allowed).toBe(true)
+      expect(result.data?.[0]?.out_limit).toBe(10)
     } finally {
       await ctx.cleanup()
     }
@@ -109,6 +122,7 @@ describe("RPC 契约守卫：只给必填参数也能被解析", () => {
     try {
       const user = await ctx.user("libdb")
       const { publishItem } = await import("@/lib/db/found-items")
+      const first = await createUploads(user.id, 1)
       const itemId = await publishItem(user.client, {
         title: "lib/db 发布的物品",
         description: "走产品封装发布，验证参数形状与 PostgREST 匹配。",
@@ -117,10 +131,11 @@ describe("RPC 契约守卫：只给必填参数也能被解析", () => {
         lat: null,
         lng: null,
         locationLabel: "",
-        paths: [user.id + "/libdb.jpg"],
+        uploadIds: first.map((upload) => upload.id),
       })
       expect(typeof itemId).toBe("string")
 
+      const second = await createUploads(user.id, 1)
       const inPlaceId = await publishItem(user.client, {
         title: "lib/db 留在原地",
         description: "只给位置描述，其余参数留空。",
@@ -129,7 +144,7 @@ describe("RPC 契约守卫：只给必填参数也能被解析", () => {
         lat: null,
         lng: null,
         locationLabel: "图书馆 3 楼",
-        paths: [user.id + "/libdb2.jpg"],
+        uploadIds: second.map((upload) => upload.id),
       })
       expect(typeof inPlaceId).toBe("string")
     } finally {

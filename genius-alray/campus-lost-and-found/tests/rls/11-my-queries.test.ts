@@ -45,7 +45,7 @@ describe("我的查询：listMyItems / listMyPickups", () => {
   })
 
   it("listMyPickups(pickerId) 只返回自己提交的领取；owner 用 listItemPickups 看全部", async () => {
-    await createPickup(b, aItem, "李四", "13900139000")
+    await createPickup(b, aItem)
 
     const mineOfB = await listMyPickups(b.client, b.id)
     expect(mineOfB.some((row) => row.found_item_id === aItem)).toBe(true)
@@ -56,12 +56,12 @@ describe("我的查询：listMyItems / listMyPickups", () => {
 
     const forOwner = await listItemPickups(a.client, aItem)
     expect(forOwner.length).toBe(1)
-    expect(forOwner[0]?.picker_name).toBe("李四")
+    expect(forOwner[0]?.picker_name).toBe(b.realName)
   })
 
   it("listMyItems 排除 withdrawn；claimed 仍保留且仍在墙上（认领即归属）", async () => {
     const claimed = await publishItem(a, { title: "A 的已被认领物品" })
-    await createPickup(b, claimed.id, "李四", "13900139000")
+    await createPickup(b, claimed.id)
 
     const withdrawn = await publishItem(a, { title: "A 的撤单物品" })
     await withdrawItem(a, withdrawn.id)

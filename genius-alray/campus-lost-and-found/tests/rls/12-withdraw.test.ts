@@ -77,7 +77,7 @@ describe("矩阵 12：撤单状态机", () => {
 
   it("claimed 不可撤 → P0001「该物品已被认领，无法撤单」", async () => {
     const item = await publishItem(owner, { title: "已被认领的物品" })
-    await createPickup(picker, item.id, "李四", "13900139000")
+    await createPickup(picker, item.id)
     expect(await itemStatus(ctx, item.id)).toBe("claimed")
 
     const result = await withdrawItemRaw(owner, item.id)
@@ -102,7 +102,7 @@ describe("矩阵 12：撤单状态机", () => {
   it("lib/db 封装：withdrawItem 生效，listMyItems 排除 withdrawn，listWallItems 含 claimed", async () => {
     const minePublished = await publishItem(owner, { title: "我的待撤单" })
     const mineClaimed = await publishItem(owner, { title: "我的已被认领" })
-    await createPickup(other, mineClaimed.id, "王五", "13700137000")
+    await createPickup(other, mineClaimed.id)
     await dbWithdrawItem(owner.client, minePublished.id)
 
     const myItems = await listMyItems(owner.client, owner.id)

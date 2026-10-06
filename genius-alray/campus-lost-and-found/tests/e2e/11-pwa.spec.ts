@@ -132,4 +132,25 @@ test.describe("PWA 外壳", () => {
       )
     ).toBe(1)
   })
+
+  test("全站安全响应头真的下发了（CSP / nosniff / 禁止嵌入 / 无 X-Powered-By）", async ({
+    page,
+  }) => {
+    const response = await page.goto("/")
+    const headers = response?.headers() ?? {}
+
+    const csp = headers["content-security-policy"] ?? ""
+    expect(csp).toContain("default-src 'self'")
+    expect(csp).toContain("frame-ancestors 'none'")
+    // 浏览器端要直连 Supabase，CSP 必须放行它，否则登录会直接崩
+    expect(csp).toContain(
+      new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "http://127.0.0.1:54321")
+        .origin
+    )
+
+    expect(headers["x-content-type-options"]).toBe("nosniff")
+    expect(headers["referrer-policy"]).toBe("strict-origin-when-cross-origin")
+    expect(headers["x-frame-options"]).toBe("DENY")
+    expect(headers["x-powered-by"]).toBeUndefined()
+  })
 })

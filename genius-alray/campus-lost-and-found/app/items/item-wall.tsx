@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useState, useTransition } from "react"
 
 import { StaggerItem, StaggerList } from "@/components/motion/primitives"
@@ -35,6 +36,8 @@ export function ItemWall({
   const firstScreenCount = initialItems.length
 
   function loadMore() {
+    // 未登录不允许翻页（服务端也会拒绝，这里只是不给入口）
+    if (!authed) return
     setError(null)
     startTransition(async () => {
       const result = await loadMoreItemsAction(offset)
@@ -86,16 +89,29 @@ export function ItemWall({
       ) : null}
 
       {hasMore ? (
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full"
-          data-testid="load-more"
-          disabled={pending}
-          onClick={loadMore}
-        >
-          {pending ? "加载中…" : "加载更多"}
-        </Button>
+        authed ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            data-testid="load-more"
+            disabled={pending}
+            onClick={loadMore}
+          >
+            {pending ? "加载中…" : "加载更多"}
+          </Button>
+        ) : (
+          // 未登录只展示最新一页：不给「加载更多」入口，改成去登录
+          <Button
+            variant="outline"
+            className="w-full"
+            nativeButton={false}
+            data-testid="wall-login-for-more"
+            render={<Link href="/login" />}
+          >
+            登录后查看更多
+          </Button>
+        )
       ) : (
         <p
           className="py-1 text-center text-xs text-muted-foreground"

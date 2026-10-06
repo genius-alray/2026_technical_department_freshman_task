@@ -1,8 +1,9 @@
 import "server-only"
 
+import { IMAGE_BUCKET } from "@/lib/storage/validate"
 import { createAdminClient } from "@/lib/supabase/admin"
 
-export const IMAGE_BUCKET = "item-images"
+export { IMAGE_BUCKET }
 export const SIGNED_URL_TTL_SECONDS = 3600
 
 /**

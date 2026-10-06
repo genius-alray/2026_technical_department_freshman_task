@@ -42,8 +42,9 @@ export const custodyKindSchema = z.enum(["kept", "in_place"])
 /** 发布招领：拍照 → AI 名称/描述（可改）→ 电话或位置 */
 export const publishItemSchema = z
   .object({
-    paths: z
-      .array(z.string().min(1))
+    /** 上传登记 id（image_uploads.id）：客户端拿不到、也不需要存储路径 */
+    uploadIds: z
+      .array(z.string().uuid("照片参数不合法"))
       .min(1, "请至少上传一张照片")
       .max(5, "最多 5 张照片"),
     title: z.string().trim().min(1, "请填写物品名称").max(60, "名称最多 60 字"),
@@ -95,21 +96,25 @@ export const profileSchema = z.object({
   phone: phoneSchema,
 })
 
-/** 领取：必须留下真实姓名与手机号 */
-export const pickupSchema = z.object({
-  itemId: z.string().uuid(),
-  name: z
-    .string()
-    .trim()
-    .min(2, "请填写真实姓名（2-20 字）")
-    .max(20, "姓名最多 20 字"),
-  phone: z
-    .string()
-    .trim()
-    .regex(/^[0-9+\- ]{6,20}$/, "请填写有效的手机号"),
+/**
+ * 发布草稿：**允许不完整**（草稿本来就可能只填了一半），所以不复用 publishItemSchema
+ * 的那套 superRefine（它要求 kept 必须有联系方式、in_place 必须有位置详情）。
+ */
+export const publishDraftSchema = z.object({
+  title: z.string().trim().max(60, "名称最多 60 字"),
+  description: z.string().trim().max(600, "描述最多 600 字"),
+  custody: custodyKindSchema.nullable(),
+  contact: z.string().trim().max(100, "联系方式最多 100 字"),
+  locationLabel: z.string().trim().max(200, "位置详情最多 200 字"),
+  lat: z.number().min(-90).max(90).nullable(),
+  lng: z.number().min(-180).max(180).nullable(),
 })
 
-/** 上传：只做形状校验，MIME 与体积在 /api/upload 里校验 */
-export const uploadMetaSchema = z.object({
-  batchId: z.string().uuid(),
+/**
+ * 领取：只提交物品 id。
+ * 姓名与手机号由 create_pickup 在服务端从 profiles 取 —— 客户端提交的实名信息
+ * 一律不算数（否则「实名认领」只是浏览器里的君子协定）。
+ */
+export const pickupSchema = z.object({
+  itemId: z.string().uuid(),
 })

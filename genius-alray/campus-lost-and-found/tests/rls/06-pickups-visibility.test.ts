@@ -33,9 +33,9 @@ describe("矩阵 7：领取记录的可见性", () => {
     itemA2 = (await publishItem(owner, { title: "甲的物品二" })).id
     itemOther = (await publishItem(otherOwner, { title: "乙的物品" })).id
 
-    await createPickup(pickerB, itemA1, "李四", "13900139000")
-    await createPickup(pickerC, itemA2, "王五", "13700137000")
-    await createPickup(pickerB, itemOther, "李四", "13900139000")
+    await createPickup(pickerB, itemA1)
+    await createPickup(pickerC, itemA2)
+    await createPickup(pickerB, itemOther)
   }, 120_000)
 
   afterAll(async () => {
@@ -56,8 +56,9 @@ describe("矩阵 7：领取记录的可见性", () => {
     const forItemA1 = (result.data ?? []).find(
       (row) => row.found_item_id === itemA1
     )
-    expect(forItemA1?.picker_name).toBe("李四")
-    expect(forItemA1?.picker_phone).toBe("13900139000")
+    // 第 9 轮：实名来自 profiles，不再等于调用方传进来的值
+    expect(forItemA1?.picker_name).toBe(pickerB.realName)
+    expect(forItemA1?.picker_phone).toBe(pickerB.phone)
   })
 
   it("矩阵 7：认领人看不到别人的认领记录", async () => {
@@ -79,7 +80,7 @@ describe("矩阵 7：领取记录的可见性", () => {
     expect(result.error).toBeNull()
     expect(result.data?.length).toBe(2)
     const names = (result.data ?? []).map((row) => row.picker_name).sort()
-    expect(names).toEqual(["李四", "王五"])
+    expect(names).toEqual([pickerB.realName, pickerC.realName].sort())
   })
 
   it("矩阵 7：owner 的列表只包含自己物品的记录", async () => {

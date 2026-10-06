@@ -34,7 +34,9 @@ import { cn } from "@/lib/utils"
 import {
   analyzeItemAction,
   publishItemAction,
+  removeDraftPhotoAction,
   reviewPhotosAction,
+  saveDraftAction,
 } from "./actions"
 import type { CustodyKind } from "@/lib/types"
 
@@ -50,14 +52,43 @@ const MAX_IMAGE_BYTES = 2 * 1024 * 1024
 const ANALYZE_TIMEOUT_MS = 25_000
 
 type Phase = "idle" | "uploading" | "publishing"
+
+/** 存进草稿的那一份快照 */
+type DraftSnapshot = {
+  title: string
+  description: string
+  custody: CustodyKind | null
+  contact: string
+  locationLabel: string
+  lat: number | null
+  lng: number | null
+}
 type AnalyzeState = "idle" | "running" | "done" | "error"
 
-type Photo = { path: string; preview: string }
+type Photo = {
+  uploadId: string
+  preview: string
+  /** true = 本次会话新建的 blob 预览（需要 revoke）；false = 草稿带回来的签名 URL */
+  local: boolean
+}
+
+/** 服务端读出来的草稿快照 */
+type DraftProps = {
+  title: string
+  description: string
+  custody: CustodyKind | ""
+  locationLabel: string
+  lat: number | null
+  lng: number | null
+  photos: Array<{ uploadId: string; url: string }>
+}
 
 type Props = {
   maxPhotos: number
   /** 账号里的手机号：选「代为保管」时直接用，不再让用户填 */
   defaultContact: string
+  /** 唯一的草稿：每次打开发布页都从它恢复，因此看到的始终是同一份 */
+  draft: DraftProps
 }
 
 /** 浏览器端压缩：最长边 ≤1600px、jpeg、质量 0.8，并压到 ≤2MB */
@@ -130,27 +161,27 @@ async function compressImage(file: File): Promise<File> {
   return new File([blob], baseName + ".jpg", { type: "image/jpeg" })
 }
 
-async function uploadImage(file: File, batchId: string) {
+/** 上传只回一个不透明 upload id：存储路径完全由服务端决定，客户端拿不到也不需要 */
+async function uploadImage(file: File) {
   const form = new FormData()
   form.append("file", file)
-  form.append("batchId", batchId)
 
   const response = await fetch("/api/upload", { method: "POST", body: form })
   const data = (await response.json().catch(() => null)) as {
-    path?: string
+    uploadId?: string
     error?: string
   } | null
-  if (!response.ok || !data?.path) {
+  if (!response.ok || !data?.uploadId) {
     throw new Error(data?.error ?? "照片上传失败，请重试")
   }
-  return data.path
+  return data.uploadId
 }
 
 function errorTitle(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback
 }
 
-export function PublishClient({ maxPhotos, defaultContact }: Props) {
+export function PublishClient({ maxPhotos, defaultContact, draft }: Props) {
   const router = useRouter()
   const inputRef = useRef<HTMLInputElement>(null)
   const [isPending, startTransition] = useTransition()
@@ -158,58 +189,78 @@ export function PublishClient({ maxPhotos, defaultContact }: Props) {
   const [step, setStep] = useState(0)
   const [direction, setDirection] = useState<1 | -1>(1)
 
-  const [batchId] = useState(() => crypto.randomUUID())
-  const [photos, setPhotos] = useState<Photo[]>([])
+  /** 草稿里已经有文案 → 不自动跑 AI，也不让它覆盖用户写过的东西 */
+  const restoredDraftText = Boolean(
+    draft.title.trim() || draft.description.trim()
+  )
+  const restoredPhotoKey = draft.photos.map((photo) => photo.uploadId).join("|")
+
+  const [photos, setPhotos] = useState<Photo[]>(() =>
+    draft.photos.map((photo) => ({
+      uploadId: photo.uploadId,
+      preview: photo.url,
+      local: false,
+    }))
+  )
   const [removing, setRemoving] = useState<string[]>([])
   const [phase, setPhase] = useState<Phase>("idle")
   const [uploadNote, setUploadNote] = useState("")
 
-  const [title, setTitle] = useState("")
-  const [description, setDescription] = useState("")
+  const [title, setTitle] = useState(draft.title)
+  const [description, setDescription] = useState(draft.description)
   const [analyzeState, setAnalyzeState] = useState<AnalyzeState>("idle")
-  const [analyzedKey, setAnalyzedKey] = useState("")
+  const [analyzedKey, setAnalyzedKey] = useState(
+    restoredDraftText ? restoredPhotoKey : ""
+  )
   /** 点「下一步」时正在让 AI 看一遍照片 */
   const [checking, setChecking] = useState(false)
   /** 非空 = 「建议补拍」对话框打开，内容是 AI 的一句话理由 */
   const [retakeReason, setRetakeReason] = useState<string | null>(null)
 
-  const [custody, setCustody] = useState<CustodyKind | "">("")
+  const [custody, setCustody] = useState<CustodyKind | "">(draft.custody)
   const [contact] = useState(defaultContact)
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(
-    null
+    draft.lat !== null && draft.lng !== null
+      ? { lat: draft.lat, lng: draft.lng }
+      : null
   )
-  const [locationLabel, setLocationLabel] = useState("")
+  const [locationLabel, setLocationLabel] = useState(draft.locationLabel)
   const [locating, setLocating] = useState(false)
   const [published, setPublished] = useState(false)
 
-  const paths = photos.map((photo) => photo.path)
+  const uploadIds = photos.map((photo) => photo.uploadId)
   /** 照片集合的指纹：变化即需要重新识别 */
-  const analysisKey = paths.join("|")
+  const analysisKey = uploadIds.join("|")
 
-  const pathsRef = useRef<string[]>([])
+  const uploadIdsRef = useRef<string[]>([])
   const keyRef = useRef("")
   const requestedRef = useRef("")
   /** 上一次真正发起识别的照片指纹：同一个 key 的重试不清空用户写过的内容 */
-  const lastAnalyzeKeyRef = useRef("")
+  const lastAnalyzeKeyRef = useRef(restoredDraftText ? restoredPhotoKey : "")
   /** 识别请求序号：看门狗超时后，迟到的返回不能再落地 */
   const analyzeSeqRef = useRef(0)
   /** 防止连点「下一步」重复发起检查 */
   const checkBusyRef = useRef(false)
-  /** 用户是否改过字段：识别结果不覆盖手写内容 */
-  const editedRef = useRef({ title: false, description: false })
+  /** 用户是否改过字段：识别结果只补空、不覆盖（草稿里已有的文案也算「用户写的」） */
+  const editedRef = useRef({
+    title: Boolean(draft.title.trim()),
+    description: Boolean(draft.description.trim()),
+  })
 
   useEffect(() => {
-    pathsRef.current = photos.map((photo) => photo.path)
+    uploadIdsRef.current = photos.map((photo) => photo.uploadId)
   }, [photos])
 
   useEffect(() => {
     keyRef.current = analysisKey
   }, [analysisKey])
 
-  // 预览 URL 只在卸载时统一释放（预览是纯客户端效果，不进入发布数据）
+  // 只释放本次会话创建的 blob 预览；草稿带回来的签名 URL 不能 revoke
   const previewsRef = useRef<string[]>([])
   useEffect(() => {
-    previewsRef.current = photos.map((photo) => photo.preview)
+    previewsRef.current = photos
+      .filter((photo) => photo.local)
+      .map((photo) => photo.preview)
   }, [photos])
   useEffect(() => {
     return () => {
@@ -217,53 +268,94 @@ export function PublishClient({ maxPhotos, defaultContact }: Props) {
     }
   }, [])
 
-  const runAnalyze = useCallback(async (key: string) => {
-    const seq = (analyzeSeqRef.current += 1)
-
-    // 换了照片才清掉上一组的 AI 文案；同一组照片的「识别物品」重试保留用户已写内容
-    const isRetry = key === lastAnalyzeKeyRef.current
-    lastAnalyzeKeyRef.current = key
-    if (!isRetry) {
-      editedRef.current = { title: false, description: false }
-      setTitle("")
-      setDescription("")
-    }
-
-    setAnalyzeState("running")
-
-    // 看门狗：provider 挂起时给用户一个出口（mock 固定会返回，E2E 走不到）
-    const watchdog = window.setTimeout(() => {
-      if (seq !== analyzeSeqRef.current) return
-      analyzeSeqRef.current += 1 // 让迟到的返回作废
-      setAnalyzeState("error")
-    }, ANALYZE_TIMEOUT_MS)
-
-    try {
-      const result = await analyzeItemAction(pathsRef.current)
-      if (seq !== analyzeSeqRef.current || key !== keyRef.current) return
+  /**
+   * 把当前快照整份写进草稿。**整体覆盖**而不是增量 patch：
+   * 「哪个字段没传」这种歧义在设计上就不存在。
+   * 失败只弹提示、不打断流程 —— 草稿存不下不该让人发布不了。
+   */
+  const persistDraft = useCallback(
+    async (patch: Partial<DraftSnapshot> = {}): Promise<boolean> => {
+      const result = await saveDraftAction({
+        title,
+        description,
+        custody: custody === "" ? null : custody,
+        contact,
+        locationLabel,
+        lat: coords?.lat ?? null,
+        lng: coords?.lng ?? null,
+        ...patch,
+      })
       if (!result.ok) {
+        toast.add({ type: "error", title: result.error })
+        return false
+      }
+      return true
+    },
+    [title, description, custody, contact, locationLabel, coords]
+  )
+
+  /** 第 2 屏的「下一步」：先把文案落进草稿，再进下一步 */
+  async function handleInfoNext() {
+    await persistDraft()
+    goTo(2)
+  }
+
+  const runAnalyze = useCallback(
+    async (key: string) => {
+      const seq = (analyzeSeqRef.current += 1)
+
+      // 换了照片才清掉上一组的 AI 文案；同一组照片的「识别物品」重试保留用户已写内容
+      const isRetry = key === lastAnalyzeKeyRef.current
+      lastAnalyzeKeyRef.current = key
+      // 恢复的草稿不动它的文案：即使换了照片也不清空，AI 只补空字段
+      if (!isRetry && !restoredDraftText) {
+        editedRef.current = { title: false, description: false }
+        setTitle("")
+        setDescription("")
+      }
+
+      setAnalyzeState("running")
+
+      // 看门狗：provider 挂起时给用户一个出口（mock 固定会返回，E2E 走不到）
+      const watchdog = window.setTimeout(() => {
+        if (seq !== analyzeSeqRef.current) return
+        analyzeSeqRef.current += 1 // 让迟到的返回作废
         setAnalyzeState("error")
-        return
+      }, ANALYZE_TIMEOUT_MS)
+
+      try {
+        const result = await analyzeItemAction(uploadIdsRef.current)
+        if (seq !== analyzeSeqRef.current || key !== keyRef.current) return
+        if (!result.ok) {
+          // 配额用完：提示一次（warning toast），表单照常渲染让用户手填
+          if (result.quotaExceeded) {
+            toast.add({ type: "warning", title: result.error })
+          }
+          setAnalyzeState("error")
+          return
+        }
+        const { title: nextTitle, description: nextDescription } = result.result
+        if (nextTitle) {
+          setTitle((prev) => (editedRef.current.title ? prev : nextTitle))
+        }
+        if (nextDescription) {
+          setDescription((prev) =>
+            editedRef.current.description ? prev : nextDescription
+          )
+        }
+        setAnalyzedKey(key)
+        setAnalyzeState("done")
+      } catch {
+        if (seq === analyzeSeqRef.current && key === keyRef.current) {
+          setAnalyzeState("error")
+        }
+      } finally {
+        window.clearTimeout(watchdog)
       }
-      const { title: nextTitle, description: nextDescription } = result.result
-      if (nextTitle) {
-        setTitle((prev) => (editedRef.current.title ? prev : nextTitle))
-      }
-      if (nextDescription) {
-        setDescription((prev) =>
-          editedRef.current.description ? prev : nextDescription
-        )
-      }
-      setAnalyzedKey(key)
-      setAnalyzeState("done")
-    } catch {
-      if (seq === analyzeSeqRef.current && key === keyRef.current) {
-        setAnalyzeState("error")
-      }
-    } finally {
-      window.clearTimeout(watchdog)
-    }
-  }, [])
+      // restoredDraftText 由 props 决定、整个生命周期不变，放进来只是为了让 lint 满意
+    },
+    [restoredDraftText]
+  )
 
   // 进入第 2 屏自动识别；照片集合变化后重新识别
   useEffect(() => {
@@ -318,7 +410,13 @@ export function PublishClient({ maxPhotos, defaultContact }: Props) {
     checkBusyRef.current = true
     setChecking(true)
     try {
-      const result = await reviewPhotosAction(pathsRef.current)
+      const result = await reviewPhotosAction(uploadIdsRef.current)
+      if (!result.ok && result.quotaExceeded) {
+        // AI 配额用完：跳过拍照建议直接进下一屏，只提示一次
+        toast.add({ type: "warning", title: result.error })
+        goTo(1)
+        return
+      }
       if (result.ok && !result.advice.ok) {
         setRetakeReason(result.advice.reason.trim() || "换个角度再拍一张")
         return
@@ -377,10 +475,14 @@ export function PublishClient({ maxPhotos, defaultContact }: Props) {
       for (let index = 0; index < batch.length; index += 1) {
         setUploadNote("正在上传第 " + (index + 1) + "/" + batch.length + " 张…")
         const compressed = await compressImage(batch[index])
-        const path = await uploadImage(compressed, batchId)
-        const photo = { path, preview: URL.createObjectURL(compressed) }
+        const uploadId = await uploadImage(compressed)
+        const photo = {
+          uploadId,
+          preview: URL.createObjectURL(compressed),
+          local: true,
+        }
         // 逐张入 state：整批中途失败时，已成功的照片不能丢（否则预览 URL 与存储对象都成孤儿）
-        pathsRef.current = [...pathsRef.current, photo.path]
+        uploadIdsRef.current = [...uploadIdsRef.current, photo.uploadId]
         setPhotos((prev) => [...prev, photo])
       }
 
@@ -389,16 +491,28 @@ export function PublishClient({ maxPhotos, defaultContact }: Props) {
     })
   }
 
-  function removePhoto(path: string) {
-    // 先拿到要释放的预览（setState updater 必须是纯函数，不能在里面 revoke）
-    const target = photos.find((photo) => photo.path === path)
-    setRemoving((prev) => (prev.includes(path) ? prev : [...prev, path]))
-    window.setTimeout(() => {
-      if (target) URL.revokeObjectURL(target.preview)
-      setPhotos((prev) => prev.filter((photo) => photo.path !== path))
-      setRemoving((prev) => prev.filter((item) => item !== path))
-      pathsRef.current = pathsRef.current.filter((item) => item !== path)
-    }, DURATION.fast * 1000)
+  function removePhoto(uploadId: string) {
+    // 先让服务端把草稿登记行和存储对象都删掉，再淡出。
+    // 删除失败就留着这张 —— 界面不能比服务端更「超前」，否则会留下孤儿对象。
+    const target = photos.find((photo) => photo.uploadId === uploadId)
+    startTransition(async () => {
+      const result = await removeDraftPhotoAction(uploadId)
+      if (!result.ok) {
+        toast.add({ type: "error", title: result.error })
+        return
+      }
+      setRemoving((prev) =>
+        prev.includes(uploadId) ? prev : [...prev, uploadId]
+      )
+      window.setTimeout(() => {
+        if (target?.local) URL.revokeObjectURL(target.preview)
+        setPhotos((prev) => prev.filter((photo) => photo.uploadId !== uploadId))
+        setRemoving((prev) => prev.filter((item) => item !== uploadId))
+        uploadIdsRef.current = uploadIdsRef.current.filter(
+          (item) => item !== uploadId
+        )
+      }, DURATION.fast * 1000)
+    })
   }
 
   function retryAnalyze() {
@@ -418,11 +532,13 @@ export function PublishClient({ maxPhotos, defaultContact }: Props) {
     setLocating(true)
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        setCoords({
+        const next = {
           lat: Number(position.coords.latitude.toFixed(6)),
           lng: Number(position.coords.longitude.toFixed(6)),
-        })
+        }
+        setCoords(next)
         setLocating(false)
+        void persistDraft(next)
         toast.add({ type: "success", title: "已获取当前位置" })
       },
       () => {
@@ -442,12 +558,13 @@ export function PublishClient({ maxPhotos, defaultContact }: Props) {
     setDirection(1)
     setCustody(next)
     setStep(3)
+    void persistDraft({ custody: next })
     if (next === "in_place" && !coords) locate()
   }
 
   function handlePublish() {
     run(async () => {
-      if (paths.length === 0) {
+      if (uploadIds.length === 0) {
         toast.add({ type: "error", title: "请至少上传一张照片" })
         return
       }
@@ -478,7 +595,7 @@ export function PublishClient({ maxPhotos, defaultContact }: Props) {
 
       setPhase("publishing")
       const result = await publishItemAction({
-        paths,
+        uploadIds,
         title: title.trim(),
         description: description.trim(),
         custody,
@@ -540,10 +657,12 @@ export function PublishClient({ maxPhotos, defaultContact }: Props) {
             <StaggerList className="grid grid-cols-3 gap-2">
               {photos.map((photo) => (
                 <StaggerItem
-                  key={photo.path}
+                  key={photo.uploadId}
                   className={cn(
                     "relative overflow-hidden rounded-xl bg-muted transition-opacity duration-[180ms]",
-                    removing.includes(photo.path) ? "opacity-0" : "opacity-100"
+                    removing.includes(photo.uploadId)
+                      ? "opacity-0"
+                      : "opacity-100"
                   )}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -559,7 +678,7 @@ export function PublishClient({ maxPhotos, defaultContact }: Props) {
                     aria-label="删除这张照片"
                     className="absolute top-1 right-1"
                     disabled={busy}
-                    onClick={() => removePhoto(photo.path)}
+                    onClick={() => removePhoto(photo.uploadId)}
                   >
                     <Trash2Icon aria-hidden />
                   </Button>
@@ -668,7 +787,7 @@ export function PublishClient({ maxPhotos, defaultContact }: Props) {
                   size="lg"
                   className="h-12 w-full text-base"
                   disabled={!canLeaveInfoStep}
-                  onClick={() => goTo(2)}
+                  onClick={handleInfoNext}
                 >
                   下一步
                 </Button>

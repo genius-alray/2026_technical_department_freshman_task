@@ -94,13 +94,13 @@ export async function loadMoreItemsAction(
 }
 
 /**
- * 认领：提交真实姓名 + 手机号。
- * 写入只能走 create_pickup RPC；认领即归属（物品置为 claimed），成功后立刻揭晓拾主的联系方式或位置。
+ * 认领：**只提交物品 id**。
+ * 实名信息由 create_pickup 在服务端从 profiles 取（客户端提交的姓名手机号一律不算数），
+ * 频率限制也由该 RPC 强制：1 小时 2 次 / 24 小时 5 次，阈值见 app_config。
+ * 认领即归属（物品置为 claimed），成功后立刻揭晓拾主的联系方式或位置。
  */
 export async function createPickupAction(input: {
   itemId: string
-  name: string
-  phone: string
 }): Promise<PickupResult> {
   const user = await getCurrentUser()
   if (!user) return { ok: false, error: "请先登录" }
@@ -115,7 +115,7 @@ export async function createPickupAction(input: {
 
   const supabase = await createClient()
   try {
-    await createPickup(supabase, parsed.data)
+    await createPickup(supabase, parsed.data.itemId)
 
     let revealed: RevealedContact | null = null
     try {

@@ -1,5 +1,5 @@
 import { expect, type Page } from "@playwright/test"
-import { publishItem } from "../helpers/fixtures"
+import { createUploadsForPaths, publishItem } from "../helpers/fixtures"
 import {
   AUTH_EMAIL_DOMAIN,
   IMAGE_BUCKET,
@@ -44,11 +44,6 @@ export function phoneFor(seed: string): string {
   for (const ch of seed) h = Math.imul(h ^ ch.charCodeAt(0), 16777619)
   const tail = (h >>> 0) % 1_000_000_000
   return "13" + tail.toString().padStart(9, "0")
-}
-
-/** 账号（auth.users.email）由手机号派生，清理 UI 注册的用户时用 */
-export function emailFor(seed: string): string {
-  return phoneFor(seed) + "@" + AUTH_EMAIL_DOMAIN
 }
 
 /** 注册：真实姓名 + 手机号 + 密码 + 勾选同意条款 */
@@ -102,12 +97,30 @@ export function photoGrid(page: Page) {
   return page.getByAltText("已上传照片")
 }
 
-/** 连续上传 n 张，并确认网格里真的出现了 n 张 */
+/**
+ * 一次选 n 张，再确认网格里真的出现了 n 张。
+ *
+ * input 本身就是 multiple，应用侧也是按批处理（handleFiles 内部逐张压缩上传、
+ * 逐张入 state），所以批量选与逐张点是等价路径；但逐张点会多花 n-1 次
+ * 「打开选择器 → 等网格更新」的往返。
+ */
 export async function uploadPhotos(page: Page, count: number): Promise<void> {
-  for (let index = 0; index < count; index += 1) {
-    await uploadPhoto(page, "photo-" + (index + 1) + ".png")
-    await expect(photoGrid(page)).toHaveCount(index + 1, { timeout: 60_000 })
-  }
+  if (count <= 0) return
+
+  const trigger = page.getByTestId("photo-add")
+  await expect(trigger).toBeVisible({ timeout: 30_000 })
+  const [chooser] = await Promise.all([
+    page.waitForEvent("filechooser", { timeout: 30_000 }),
+    trigger.click(),
+  ])
+  await chooser.setFiles(
+    Array.from({ length: count }, (_, index) => ({
+      name: "photo-" + (index + 1) + ".png",
+      mimeType: "image/png",
+      buffer: PNG_BYTES,
+    }))
+  )
+  await expect(photoGrid(page)).toHaveCount(count, { timeout: 60_000 })
 }
 
 export type E2EItem = {
@@ -162,6 +175,8 @@ export async function createPublishedItem(
   const contact = options.contact ?? "13800138000"
   const locationLabel = options.locationLabel ?? ""
 
+  // 与 /api/upload 一致：先登记 uploads 行，再用 id 发布（第 9 轮起不传路径）
+  const seeds = await createUploadsForPaths(owner.id, paths)
   const item = await publishItem(owner, {
     title,
     description,
@@ -170,7 +185,7 @@ export async function createPublishedItem(
     locationLabel,
     lat: options.lat ?? null,
     lng: options.lng ?? null,
-    photoPaths: paths,
+    uploadIds: seeds.map((seed) => seed.id),
   })
 
   return { id: item.id, title, description, contact, locationLabel }
@@ -202,16 +217,29 @@ export async function submitClaimWithConfirm(page: Page): Promise<void> {
  * 清理「通过 UI 注册」的账号：ctx.cleanup() 只知道 API 侧创建的用户，
  * 这里按手机号派生的邮箱反查 id，删除其私有桶对象后再删用户（级联物品/图片/认领）。
  */
-export async function cleanupUiUser(
+/**
+ * 按派生邮箱反查「通过 UI 注册」的账号 id。
+ * 手机号被改过时传新的那个：登录邮箱跟着手机号走，已不等于 seed 派生的邮箱。
+ */
+export async function uiUserId(
   ctx: TestContext,
-  seed: string
-): Promise<void> {
-  const email = emailFor(seed)
+  seed: string,
+  phone?: string
+): Promise<string | null> {
+  const email = (phone ?? phoneFor(seed)) + "@" + AUTH_EMAIL_DOMAIN
   const listed = await ctx.admin.auth.admin.listUsers({
     page: 1,
     perPage: 1000,
   })
-  const userId = listed.data?.users.find((user) => user.email === email)?.id
+  return listed.data?.users.find((user) => user.email === email)?.id ?? null
+}
+
+export async function cleanupUiUser(
+  ctx: TestContext,
+  seed: string,
+  phone?: string
+): Promise<void> {
+  const userId = await uiUserId(ctx, seed, phone)
   if (!userId) return
 
   try {

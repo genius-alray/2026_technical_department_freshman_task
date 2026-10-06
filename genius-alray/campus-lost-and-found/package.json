@@ -24,6 +24,7 @@
     "db:env": "node scripts/gen-env.mjs",
     "db:status": "supabase status",
     "db:check": "node scripts/probe-db.mjs",
+    "db:prune-drafts": "node scripts/prune-drafts.mjs",
     "test:live": "AI_PROVIDER=ai-sdk vitest run tests/live"
   },
   "dependencies": {

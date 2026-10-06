@@ -8,6 +8,7 @@ import {
   photoGrid,
   signInViaUi,
   signUpViaUi,
+  uiUserId,
   uniqueSeed,
   uploadPhoto,
   uploadPhotos,
@@ -260,6 +261,36 @@ test.describe("发布向导", () => {
     expect(row.data?.location_label).toBe(locationLabel)
     expect(row.data?.location_lat).toBeNull()
     expect(row.data?.status).toBe("published")
+  })
+
+  test("AI 配额用完：跳过识别、弹 warning 提示，仍可手动填写继续", async ({
+    page,
+  }) => {
+    // 把这个账号的配额先花光（等价于它已经调用过 10 次）
+    const userId = await uiUserId(ctx, seed)
+    if (!userId) throw new Error("找不到刚注册的账号")
+    const seeded = await ctx.admin
+      .from("ai_calls")
+      .insert(Array.from({ length: 10 }, () => ({ user_id: userId })))
+    expect(seeded.error).toBeNull()
+
+    await page.goto("/publish")
+    await uploadPhoto(page, "photo-1.png")
+    await page.getByRole("button", { name: "下一步" }).click()
+
+    // 拍照建议被跳过：不弹「建议补拍」，只给一条 warning
+    await expect(page.getByText(/AI 识别已达上限/).first()).toBeVisible({
+      timeout: T,
+    })
+    await expect(page.getByTestId("photo-advice-dialog")).toHaveCount(0)
+
+    // 表单照常可用：手动填完名称与描述就能继续，AI 不可用不阻塞发布
+    await expect(page.locator("#title")).toBeVisible({ timeout: T })
+    await page.locator("#title").fill("手动填写的名称")
+    await page.locator("#description").fill("手动填写的描述")
+    await expect(page.getByRole("button", { name: "下一步" })).toBeEnabled({
+      timeout: T,
+    })
   })
 
   test("指定存放位置：定位成功也只说「已获取定位」，界面上不出现经纬度", async ({

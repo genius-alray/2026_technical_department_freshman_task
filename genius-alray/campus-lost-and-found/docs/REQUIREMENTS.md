@@ -19,6 +19,8 @@
   登录用手机号 + 密码（**不做短信验证码**），手机号映射为内部邮箱 `<phone>@<NEXT_PUBLIC_AUTH_EMAIL_DOMAIN>`。
 - 手机号必须是中国大陆 11 位手机号且唯一；姓名 2–20 字。二者在 `profiles` 里都是 NOT NULL。
 - 个人信息可在 `/me/profile` 修改（支持 `?next=` 回到来源页）。**认领时直接复用账号信息，不再让用户重复填**。
+- **改手机号会一并改登录账号**：`profiles.phone` 与 `auth.users.email`（由手机号派生）是一对不变量，
+  保存资料时先同步登录账号再写 `profiles`；任一步失败都不落库，绝不留下「资料是新号、登录用旧号」的状态。
 - **未登录也能看首屏信息流**（`/` 公开，点物品跳登录并带 `next`）；`/terms`、`/privacy` 也公开；
   其余页面与所有 Server Action 都要求已登录。
 
@@ -26,7 +28,7 @@
 
 ## 3. 核心流程
 
-### 3.1 发布招领（四屏向导，一步一屏，无草稿）
+### 3.1 发布招领（四屏向导，一步一屏 + 单例草稿）
 
 1. **拍照**：照片上限 `app_config.max_photos`（当前 3），不显示数量提示；
    照片网格的最后一个元素是「添加照片」（没有照片时它就是上传按钮）；上方一句拍照指引。
@@ -39,6 +41,14 @@
 实现细节：拍照走移动端 `capture=environment`，浏览器端压缩（最长边 ≤1600px、质量 0.8、≤2MB）后逐张上传；
 「发布」一次事务写入物品与全部照片记录，成功后整屏对勾 → 回失物墙；AI 不可用时手填名称/描述也能发布。
 布局与文案见 `docs/UI-DESIGN.md`。
+
+**草稿（第 10 轮）**：每个用户**只有一份**草稿（`publish_drafts.user_id` 就是主键，数据库层保证不可能存在第二份），
+发布页每次打开恢复的都是同一份：
+
+- 照片在上传成功那一刻就挂到草稿上；**从草稿移除照片会连存储对象一起删掉**（以前会留桶内孤儿）；
+- 文案在每次离开一步时整份覆盖保存；**草稿里已有内容时不再自动跑 AI**，AI 也只补空字段、不覆盖用户写的东西；
+- 发布成功后草稿即被清空（用完即弃）；
+- 被放弃的草稿由 `pnpm db:prune-drafts`（默认 dry-run，7 天）整体回收 —— 草稿是**有边界的清理单位**。
 
 ### 3.2 失物墙（公开浏览）
 
@@ -59,6 +69,10 @@
 4. 「**领错了？**」可撤回认领：物品回到待认领，**认领记录保留**，之后还能再认领。
 5. 拾主不能认领自己发布的物品；同一人重复提交视为更新，不产生第二条记录。
 6. 已认领的物品仍然留在失物墙上，带「已认领」标签；拾主不能撤单已被认领的物品。
+7. **实名由服务端决定**：客户端只提交物品 id（`create_pickup` 只有 `p_item_id` 一个参数），
+   姓名与手机号一律从 `profiles` 读 —— 前端传什么都不算数，也传不进来。
+8. **频率限制**：认领 1 小时最多 2 次、24 小时最多 5 次（同一件物品重复提交不计次）；
+   AI 识别每小时最多 10 次，超限时**跳过 AI 并弹 warning toast**，用户可以手填名称/描述继续发布。
 
 ### 3.4 我的
 
@@ -100,6 +114,10 @@ published ──(第一个认领人提交)──> claimed    （仍在墙上，�
 | 揭晓        | `reveal_found_item_contact` 仅**拾主本人**或**已提交认领记录的人**可调用                                                                                       |
 | 认领人信息  | `pickups` 的可见性为**拾主 + 认领人本人**（RLS）                                                                                                               |
 | 图片        | 私有桶，无任何客户端读写策略；上传走 `/api/upload`（service_role），读取由服务端签发 1 小时签名 URL                                                            |
+| **上传归属** | `image_uploads` 登记表：客户端只拿到不透明 `uploadId`，**存储路径与归属判定都留在服务端**；发布按 id 校验（引用他人 → 42501），不再有「路径前缀」这类比较 |
+| **上传内容** | 除声明的 MIME 与体积外，还按**文件头魔数**校验（`sniffImageMime`），对不上直接 415 |
+| **限流**     | 认领 1 小时 2 次 / 24 小时 5 次；AI 每小时 10 次。阈值在 `app_config`，由 RPC 强制（直连 PostgREST 也绕不过） |
+| **响应头**   | 全站 CSP（放行 Supabase origin、`frame-ancestors 'none'`）+ nosniff + Referrer-Policy + Permissions-Policy；非 dev 额外发 HSTS |
 
 ### 4.2 数据表
 
@@ -111,7 +129,11 @@ found_item_images  id, found_item_id, storage_path, position
 pickups            id, found_item_id, picker_id, picker_name, picker_phone, created_at
                    unique(found_item_id, picker_id)
 profiles           id, real_name(NOT NULL, 2–20 字), phone(NOT NULL, 唯一, 11 位), created_at, updated_at
-app_config         max_photos(3), page_size(20)   —— RLS 全禁，只能经 RPC 读
+image_uploads      id, uploader_id, storage_path, created_at, consumed_at
+                   —— 上传登记：客户端只拿 id（RLS 只能读自己那些行），路径只由服务端使用
+ai_calls           id, user_id, created_at      —— AI 配额计数，客户端完全不可见（只经 RPC）
+app_config         max_photos(3), page_size(20), claim_per_hour(2), claim_per_day(5), ai_per_hour(10)
+                   —— RLS 全禁，只能经 RPC 读
 ```
 
 已删除：tags / found_item_tags / lost_reports / lost_report_tags / matches / claims / claim_attempts。
@@ -120,13 +142,14 @@ app_config         max_photos(3), page_size(20)   —— RLS 全禁，只能经 
 
 | RPC                                         | 调用方         | 作用                                                                                                            |
 | ------------------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------- |
-| `publish_found_item(...)`                   | authenticated  | 一次事务建物品与照片；校验每个 path 前缀必须是调用者 uid；**in_place 必须有位置详情**                                                        |
+| `publish_found_item(...)`                   | authenticated  | 一次事务建物品与照片；照片按 `p_upload_ids` 校验归属（别人的 → 42501、不存在 → P0002、重复引用/已用过都被拒）；**in_place 必须有位置详情** |
 | `withdraw_found_item(p_item_id)`            | 物品 owner     | 撤单；**仅 status=published 时允许**（已认领 → P0001）                                                          |
-| `create_pickup(p_item_id, p_name, p_phone)` | authenticated  | 实名认领；**成功即把物品置为 claimed**；**允许多人认领**；已撤单 → P0001；拾主认领自己的 → 42501；本人重复提交为更新 |
+| `create_pickup(p_item_id)`                  | authenticated  | 实名认领：姓名/手机号**从 profiles 取**；成功即置 claimed；允许多人认领；已撤单 → P0001；拾主认领自己的 → 42501；本人重复提交为更新；**限流 1h/2 次、24h/5 次**（重复提交不计数） |
 | `reveal_found_item_contact(p_item_id)`      | 拾主或已认领者 | 返回联系方式或位置                                                                                              |
 | `release_found_item_claim(p_item_id)`       | 认领人本人     | 撤回认领：物品回到 published，**认领记录保留**（之后仍可再认领）                                                |
 | `list_found_item_claimers(p_item_id)`       | 拾主或已认领者 | 列出该物品的**全部认领人**，用于多人认领时互相联系                                                              |
 | `get_app_config()`                          | anon + 登录    | 返回 max_photos / page_size                                                                                     |
+| `consume_ai_quota()`                        | 登录用户       | 消耗一次 AI 配额，返回 (allowed, used, limit)；超限返回 allowed=false，调用方跳过 AI 并提示 |
 
 > **实现约定**：RETURNS TABLE 的 OUT 参数一律加 `out_` 前缀。本项目已因 OUT 参数与列名撞名踩过两次
 > 42702（`record_claim_attempt` 的 `status`、`upsert_tags` 的 `aspect`），务必保持该约定。

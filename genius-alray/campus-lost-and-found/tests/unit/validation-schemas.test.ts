@@ -5,16 +5,19 @@ import {
   profileSchema,
   publishItemSchema,
   signUpSchema,
-  uploadMetaSchema,
   phoneSchema,
 } from "@/lib/validation/schemas"
 
 const ITEM_ID = "11111111-1111-4111-8111-111111111111"
-const PATHS = ["u1/a.jpg"]
+
+/** 第 9 轮起照片用 upload id（uuid）引用，不再传存储路径 */
+function uploadId(seed: number): string {
+  return "22222222-2222-4222-8222-" + String(seed).padStart(12, "0")
+}
 
 function publishInput(overrides: Record<string, unknown> = {}) {
   return {
-    paths: PATHS,
+    uploadIds: [uploadId(1)],
     title: "黑色钱包",
     description: "皮质钱包，内有若干卡片。",
     custody: "kept",
@@ -79,21 +82,31 @@ describe("publishItemSchema：联系方式与位置分支", () => {
 
   it("照片数量 1-5：0 张与 6 张失败，1 张与 5 张通过", () => {
     expect(
-      publishItemSchema.safeParse(publishInput({ paths: [] })).success
+      publishItemSchema.safeParse(publishInput({ uploadIds: [] })).success
     ).toBe(false)
     expect(
       publishItemSchema.safeParse(
-        publishInput({ paths: ["a", "b", "c", "d", "e", "f"] })
+        publishInput({ uploadIds: [1, 2, 3, 4, 5, 6].map(uploadId) })
       ).success
     ).toBe(false)
     expect(
-      publishItemSchema.safeParse(publishInput({ paths: ["a"] })).success
+      publishItemSchema.safeParse(publishInput({ uploadIds: [uploadId(1)] }))
+        .success
     ).toBe(true)
     expect(
       publishItemSchema.safeParse(
-        publishInput({ paths: ["a", "b", "c", "d", "e"] })
+        publishInput({ uploadIds: [1, 2, 3, 4, 5].map(uploadId) })
       ).success
     ).toBe(true)
+  })
+
+  it("照片必须是 upload id：路径或任意字符串一律拒绝", () => {
+    for (const bad of ["u1/a.jpg", "9f1/x.jpg", "", "not-a-uuid"]) {
+      expect(
+        publishItemSchema.safeParse(publishInput({ uploadIds: [bad] })).success,
+        bad
+      ).toBe(false)
+    }
   })
 
   it("名称 1-60 字、描述 1-600 字", () => {
@@ -131,47 +144,24 @@ describe("publishItemSchema：联系方式与位置分支", () => {
   })
 })
 
-describe("pickupSchema：实名领取", () => {
-  it("姓名 1 字失败、21 字失败、2 字与 20 字通过", () => {
-    const base = { itemId: ITEM_ID, phone: "13800138000" }
-    expect(pickupSchema.safeParse({ ...base, name: "张" }).success).toBe(false)
-    expect(
-      pickupSchema.safeParse({ ...base, name: "张".repeat(21) }).success
-    ).toBe(false)
-    expect(pickupSchema.safeParse({ ...base, name: "张三" }).success).toBe(true)
-    expect(
-      pickupSchema.safeParse({ ...base, name: "张".repeat(20) }).success
-    ).toBe(true)
+describe("pickupSchema：只提交物品 id", () => {
+  it("合法 uuid 通过", () => {
+    expect(pickupSchema.safeParse({ itemId: ITEM_ID }).success).toBe(true)
   })
 
-  it("手机号：含字母/过短/过长失败，含 +-空格 的合法号通过", () => {
-    const base = { itemId: ITEM_ID, name: "张三" }
-    for (const phone of [
-      "1380013800a",
-      "12345",
-      "1".repeat(21),
-      "电话13800138000",
-    ]) {
-      expect(pickupSchema.safeParse({ ...base, phone }).success, phone).toBe(
-        false
-      )
-    }
-    expect(
-      pickupSchema.safeParse({ ...base, phone: "13800138000" }).success
-    ).toBe(true)
-    expect(
-      pickupSchema.safeParse({ ...base, phone: "+86 138-0013-8000" }).success
-    ).toBe(true)
+  it("itemId 必须是 uuid，且必填", () => {
+    expect(pickupSchema.safeParse({ itemId: "abc" }).success).toBe(false)
+    expect(pickupSchema.safeParse({}).success).toBe(false)
   })
 
-  it("itemId 必须是 uuid", () => {
-    expect(
-      pickupSchema.safeParse({
-        itemId: "abc",
-        name: "张三",
-        phone: "13800138000",
-      }).success
-    ).toBe(false)
+  it("客户端塞进来的姓名/手机号会被丢掉（实名由服务端从 profiles 取）", () => {
+    const parsed = pickupSchema.safeParse({
+      itemId: ITEM_ID,
+      name: "张三",
+      phone: "13800138000",
+    })
+    expect(parsed.success).toBe(true)
+    expect(parsed.data).toEqual({ itemId: ITEM_ID })
   })
 })
 
@@ -201,11 +191,6 @@ describe("账号与上传元数据", () => {
     expect(signUpSchema.safeParse({ ...valid, phone: "12345" }).success).toBe(
       false
     )
-  })
-
-  it("uploadMetaSchema 要求合法 uuid", () => {
-    expect(uploadMetaSchema.safeParse({ batchId: ITEM_ID }).success).toBe(true)
-    expect(uploadMetaSchema.safeParse({ batchId: "nope" }).success).toBe(false)
   })
 })
 

@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test"
 import type { TestContext } from "../helpers/supabase"
 import {
+  E2E_PASSWORD,
   createE2EUser,
   createPublishedItem,
   cleanupUiUser,
@@ -161,6 +162,67 @@ test.describe("我的与个人信息", () => {
       await expect(page).toHaveURL(/\/login/, { timeout: T })
     } finally {
       await cleanupUiUser(ctx, seed)
+    }
+  })
+
+  /**
+   * 回归：手机号就是账号（内部邮箱 <手机号>@<域名>）。
+   * 只把资料里的手机号改掉、不同步登录账号，用户就被锁在门外 ——
+   * 资料显示新号，登录却只认旧号。
+   */
+  test("改手机号后：新手机号能登录，旧手机号不能", async ({
+    page,
+    browser,
+  }) => {
+    test.setTimeout(300_000)
+    const seed = uniqueSeed("phone")
+    const oldPhone = phoneFor(seed)
+    const newPhone = phoneFor(uniqueSeed("newphone"))
+    await signUpViaUi(page, seed)
+
+    try {
+      await page.goto("/me/profile")
+      await page.locator("#profile-phone").fill(newPhone)
+      await page.getByTestId("profile-submit").click()
+      await page.waitForURL(/\/me$/, { timeout: T })
+
+      // 干净会话 1：新手机号能登进来
+      const newSession = await browser.newContext()
+      try {
+        const freshPage = await newSession.newPage()
+        await freshPage.goto("/login")
+        await freshPage.fill("#phone", newPhone)
+        await freshPage.fill("#password", E2E_PASSWORD)
+        await freshPage
+          .getByRole("button", { name: "登录", exact: true })
+          .click()
+        await expect(freshPage).toHaveURL(/\/$/, { timeout: T })
+      } finally {
+        await newSession.close()
+      }
+
+      // 干净会话 2：旧手机号不再是账号。
+      // 必须**另开** context：上一次登录已经写进 cookie，同一个 context 再打开 /login
+      // 会被 proxy 的乐观跳转弹回首页，于是页面上根本没有输入框可填。
+      const oldSession = await browser.newContext()
+      try {
+        const stalePage = await oldSession.newPage()
+        await stalePage.goto("/login")
+        await stalePage.fill("#phone", oldPhone)
+        await stalePage.fill("#password", E2E_PASSWORD)
+        await stalePage
+          .getByRole("button", { name: "登录", exact: true })
+          .click()
+        await expect(stalePage.getByText(/手机号或密码不正确/)).toBeVisible({
+          timeout: T,
+        })
+        await expect(stalePage).toHaveURL(/\/login/)
+      } finally {
+        await oldSession.close()
+      }
+    } finally {
+      // 邮箱已经跟着新手机号走了，必须按新号反查才能删掉这个账号
+      await cleanupUiUser(ctx, seed, newPhone)
     }
   })
 })

@@ -103,17 +103,40 @@ test.describe("失物墙", () => {
     }
   })
 
-  test("双列瀑布流分页：加载更多后能看到更早发布的物品", async ({ page }) => {
+  test("双列瀑布流分页：加载更多后能看到更早发布的物品", async ({
+    page,
+    browser,
+  }) => {
     test.setTimeout(600_000)
     const seed = uniqueSeed("page")
     const runId = Math.random().toString(36).slice(2, 6)
+    // 22 条（超过一页）：并发造数据，再把 created_at 统一拉开。
+    // 顺序 await 22 次纯属白等；并发之后插入顺序不确定，所以「谁最旧」显式指定 ——
+    // 比依赖插入时序更稳，也更快。
     const titles: string[] = []
-    // 顺序创建 22 条（created_at 递增）：第 1 条最旧，应落在第 2 页
     for (let index = 1; index <= 22; index += 1) {
-      const title = "E2E 分页 " + String(index).padStart(2, "0") + " " + runId
-      titles.push(title)
-      await createPublishedItem(ctx, owner, { title, photos: 1 })
+      titles.push("E2E 分页 " + String(index).padStart(2, "0") + " " + runId)
     }
+    const items = await Promise.all(
+      titles.map((title) =>
+        createPublishedItem(ctx, owner, { title, photos: 1 })
+      )
+    )
+    const base = Date.now() - titles.length * 60_000
+    const stamped = await Promise.all(
+      items.map((item, index) =>
+        ctx.admin
+          .from("found_items")
+          .update({
+            created_at: new Date(base + index * 60_000).toISOString(),
+          })
+          .eq("id", item.id)
+      )
+    )
+    expect(
+      stamped.every((result) => result.error === null),
+      "固定 created_at 失败会让分页顺序变得不确定"
+    ).toBe(true)
 
     await signUpViaUi(page, seed)
     try {
@@ -141,6 +164,23 @@ test.describe("失物墙", () => {
         }
       }
       expect(found).toBe(true)
+
+      // 回归：匿名访客只给最新一页 —— 不出现「加载更多」（点了必然报「请先登录」），
+      // 改成去登录的入口。此时墙上确实超过一页（上面刚造了 22 条）。
+      const anon = await browser.newContext()
+      try {
+        const anonPage = await anon.newPage()
+        await anonPage.goto("/")
+        await expect(anonPage.getByTestId("item-wall")).toBeVisible({
+          timeout: T,
+        })
+        await expect(anonPage.getByTestId("load-more")).toHaveCount(0)
+        await expect(anonPage.getByTestId("wall-login-for-more")).toBeVisible({
+          timeout: T,
+        })
+      } finally {
+        await anon.close()
+      }
     } finally {
       await cleanupUiUser(ctx, seed)
     }

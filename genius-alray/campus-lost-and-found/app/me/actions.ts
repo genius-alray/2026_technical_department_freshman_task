@@ -4,11 +4,14 @@ import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { z } from "zod"
 
+import { syncLoginPhone } from "@/lib/auth/login-phone"
 import { withdrawItem } from "@/lib/db/found-items"
-import { updateMyProfile } from "@/lib/db/profiles"
+import { getMyProfile, updateMyProfile } from "@/lib/db/profiles"
 import { DbError } from "@/lib/db/types"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient, getCurrentUser } from "@/lib/supabase/server"
 import { profileSchema } from "@/lib/validation/schemas"
+import type { Profile } from "@/lib/types"
 
 export type WithdrawItemResult = { ok: boolean; message: string }
 
@@ -79,12 +82,42 @@ export async function saveProfileAction(
   }
 
   const nextPath = safeNext(formData.get("next"))
+  const supabase = await createClient()
+
+  let current: Profile | null = null
+  try {
+    current = await getMyProfile(supabase, user.id)
+  } catch {
+    // 读不到当前资料就不去动登录账号：宁可让用户重试，也不留下半成品状态
+    return { formError: "读取个人信息失败，请重试" }
+  }
+
+  // 手机号即账号（内部邮箱 <手机号>@<域名>），所以改手机号必须同步改 auth 的邮箱，
+  // 否则用户只能继续用**旧**手机号登录 —— 新号永远登不进来。
+  //
+  // 顺序是关键：**先改登录账号**。auth 的邮箱同样有唯一约束，顺便就挡住了
+  // 「换成别人已注册的手机号」；反过来先写 profiles 再改邮箱的话，邮箱那一步一旦
+  // 失败，留下的是「资料里是新号、登录还得用旧号」的死局。
+  const phoneChanged = current?.phone !== parsed.data.phone
+  if (phoneChanged) {
+    const synced = await syncLoginPhone(
+      createAdminClient(),
+      user.id,
+      parsed.data.phone
+    )
+    if (!synced.ok) return { formError: synced.error }
+  }
 
   try {
-    const supabase = await createClient()
     await updateMyProfile(supabase, user.id, parsed.data)
     revalidatePath("/me")
   } catch (error) {
+    // 资料没写成 → 把登录账号也退回原样，绝不留下两处不一致
+    if (phoneChanged && current) {
+      await syncLoginPhone(createAdminClient(), user.id, current.phone).catch(
+        () => {}
+      )
+    }
     return {
       formError: error instanceof DbError ? error.message : "保存失败，请重试",
     }

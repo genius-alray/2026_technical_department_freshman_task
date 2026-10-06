@@ -1,18 +1,16 @@
 import type { DbClient, Pickup } from "@/lib/types"
 import { unwrap, unwrapMaybe } from "@/lib/db/types"
 
-/** 领取：提交真实姓名 + 手机号。同一物品可被多人领取。 */
+/**
+ * 领取：只提交物品 id。
+ * 实名信息（姓名 + 手机号）由 create_pickup 在服务端从 profiles 取，
+ * 频率限制也由该 RPC 强制（见 app_config.claim_per_hour / claim_per_day）。
+ */
 export async function createPickup(
   supabase: DbClient,
-  input: { itemId: string; name: string; phone: string }
+  itemId: string
 ): Promise<string> {
-  return unwrap(
-    await supabase.rpc("create_pickup", {
-      p_item_id: input.itemId,
-      p_name: input.name,
-      p_phone: input.phone,
-    })
-  )
+  return unwrap(await supabase.rpc("create_pickup", { p_item_id: itemId }))
 }
 
 /**

@@ -1,5 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
+import { syncLoginPhone } from "@/lib/auth/login-phone"
 import {
+  AUTH_EMAIL_DOMAIN,
+  TEST_PASSWORD,
+  createAnonClient,
   createTestContext,
   type TestContext,
   type TestUser,
@@ -149,5 +153,53 @@ describe("profiles：个人信息的列级与行级权限", () => {
       .select("phone")
       .single()
     expect(ok.error).toBeNull()
+  })
+
+  /**
+   * 回归：手机号即账号（内部邮箱 <手机号>@<域名>）。
+   * 只改 profiles.phone 而不动 auth 的邮箱，用户就会变成
+   * 「资料里写着新号、却只能拿旧号登录」—— 等于把自己锁在门外。
+   * 这里调用的是 app/me/actions.ts 里用的同一个函数。
+   */
+  it("改手机号后：新手机号能登录，旧手机号不再能登录", async () => {
+    const newPhone = freshPhone()
+    const newEmail = newPhone + "@" + AUTH_EMAIL_DOMAIN
+    expect(newEmail).not.toBe(alice.email)
+
+    // 顺序与 saveProfileAction 一致：先同步登录账号，再写资料
+    const synced = await syncLoginPhone(ctx.admin, alice.id, newPhone)
+    expect(synced).toEqual({ ok: true })
+
+    // 登录账号变了，但当前会话不受影响（改完还得能存资料）
+    const updated = await alice.client
+      .from("profiles")
+      .update({ phone: newPhone })
+      .eq("id", alice.id)
+      .select("phone")
+      .single()
+    expect(updated.error).toBeNull()
+    expect(updated.data?.phone).toBe(newPhone)
+
+    // 新手机号派生的邮箱能登录
+    const fresh = createAnonClient()
+    const signedIn = await fresh.auth.signInWithPassword({
+      email: newEmail,
+      password: TEST_PASSWORD,
+    })
+    expect(signedIn.error).toBeNull()
+    expect(signedIn.data.user?.id).toBe(alice.id)
+
+    // 旧手机号派生的邮箱已经不是登录账号了
+    const stale = createAnonClient()
+    const old = await stale.auth.signInWithPassword({
+      email: alice.email,
+      password: TEST_PASSWORD,
+    })
+    expect(old.error).not.toBeNull()
+  })
+
+  it("同步登录账号时，已被别人占用的手机号会被拒绝", async () => {
+    const taken = await syncLoginPhone(ctx.admin, alice.id, bob.phone)
+    expect(taken.ok).toBe(false)
   })
 })

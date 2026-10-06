@@ -25,6 +25,7 @@
         # Model-facing tool prefix: mcp__supabase__<tool>
         serverName: supabase
         transport: streamable-http
+        # 未加 read_only：DDL / 迁移等可写工具仍开放；要收紧见 .dsh/README.md
         url: 'https://mcp.supabase.com/mcp?project_ref=iehxleycijdqlglnfbby&features=docs%2Caccount%2Cdatabase%2Cdebugging%2Cdevelopment%2Cfunctions%2Cbranching'
         headers:
           Authorization: !!js '`Bearer ${process.env.SUPABASE_ACCESS_TOKEN ?? ""}`'

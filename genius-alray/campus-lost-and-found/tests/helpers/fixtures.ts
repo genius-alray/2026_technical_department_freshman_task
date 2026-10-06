@@ -1,12 +1,15 @@
-import { publishItem as dbPublishItem } from "@/lib/db/found-items"
+import { createAdminClient, IMAGE_BUCKET, PNG_BYTES } from "./supabase"
 import type { TestContext, TestUser } from "./supabase"
-import { IMAGE_BUCKET, PNG_BYTES } from "./supabase"
+import { publishItem as dbPublishItem } from "@/lib/db/found-items"
 
 // ============================================================
 // 简化版模型的测试夹具
 //   found_items / found_item_images / pickups 对客户端只有 SELECT，
 //   写入一律走 SECURITY DEFINER RPC，因此夹具也走真实 RPC（不是 admin 直插），
 //   这样测到的就是产品代码实际会走的路径。
+//
+// 第 9 轮起照片不再用「路径」引用：归属是 image_uploads 表里的一行。
+// 夹具先用 service_role 造登记行（与 /api/upload 落库那一步等价），再拿 id 去发布。
 // ============================================================
 
 export const DEFAULT_CONTACT = "13800138000"
@@ -14,13 +17,51 @@ export const DEFAULT_TITLE = "测试物品"
 export const DEFAULT_DESCRIPTION =
   "这是一段测试用的物品描述，长度满足 1-600 字要求。"
 
-/** 私有桶路径固定为 {uid}/{uuid}.ext —— RPC 会校验前缀必须是调用者 uid */
-export function imagePathFor(ownerId: string): string {
-  return ownerId + "/" + crypto.randomUUID() + ".jpg"
+export type UploadSeed = { id: string; path: string }
+
+/**
+ * 造一条上传登记（等价于 /api/upload 成功之后落下的那一行）。
+ * 可指定 storage_path，便于和 uploadObject 造的真实对象对上。
+ */
+export async function createUpload(
+  uploaderId: string,
+  options: { path?: string; consumed?: boolean } = {}
+): Promise<UploadSeed> {
+  const admin = createAdminClient()
+  const id = crypto.randomUUID()
+  const path = options.path ?? uploaderId + "/" + id + ".jpg"
+  const result = await admin.from("image_uploads").insert({
+    id,
+    uploader_id: uploaderId,
+    storage_path: path,
+    consumed_at: options.consumed ? new Date().toISOString() : null,
+  })
+  if (result.error) {
+    throw new Error("造上传登记失败：" + result.error.message)
+  }
+  return { id, path }
 }
 
-export function fakePaths(ownerId: string, count: number): string[] {
-  return Array.from({ length: count }, () => imagePathFor(ownerId))
+/** 批量造登记（顺序稳定，便于断言 position 与 storage_path 的对应关系） */
+export async function createUploads(
+  uploaderId: string,
+  count: number
+): Promise<UploadSeed[]> {
+  return Promise.all(
+    Array.from({ length: count }, () => createUpload(uploaderId))
+  )
+}
+
+/** 用指定的 storage_path 批量造登记（E2E 里配合真实对象使用） */
+export async function createUploadsForPaths(
+  uploaderId: string,
+  paths: string[]
+): Promise<UploadSeed[]> {
+  const seeds: UploadSeed[] = []
+  for (const path of paths) {
+    seeds.push(await createUpload(uploaderId, { path }))
+  }
+  return seeds
 }
 
 export type PublishOptions = {
@@ -31,9 +72,9 @@ export type PublishOptions = {
   lat?: number | null
   lng?: number | null
   locationLabel?: string
-  /** 直接指定照片路径（用于非法路径/超限等用例） */
-  photoPaths?: string[]
-  /** 未指定 photoPaths 时生成几张（默认 1） */
+  /** 直接指定 upload id（用于「别人的照片」「不存在的照片」等用例） */
+  uploadIds?: string[]
+  /** 未指定 uploadIds 时造几条登记（默认 1；传 0 用于「没有照片」） */
   photoCount?: number
 }
 
@@ -41,7 +82,7 @@ export type PublishedItem = {
   id: string
   title: string
   description: string
-  photoPaths: string[]
+  uploadIds: string[]
 }
 
 type RpcResult<T> = {
@@ -57,12 +98,14 @@ export async function publishItem(
   const custody = options.custody ?? "kept"
   const title = options.title ?? DEFAULT_TITLE
   const description = options.description ?? DEFAULT_DESCRIPTION
-  const photoPaths =
-    options.photoPaths ?? fakePaths(owner.id, options.photoCount ?? 1)
+  const uploadIds =
+    options.uploadIds ??
+    (await createUploads(owner.id, options.photoCount ?? 1)).map(
+      (upload) => upload.id
+    )
 
   // 走产品自己的封装（lib/db/found-items.ts）而不是手写 RPC 参数：
   // 这样 PostgREST 的函数匹配语义（参数是否有 DEFAULT）一旦漂移，测试会直接失败。
-  // 曾经因为可选参数没有 DEFAULT，lib/db 传 undefined 导致 8 键不齐 → PGRST202。
   const id = await dbPublishItem(owner.client, {
     title,
     description,
@@ -71,14 +114,14 @@ export async function publishItem(
     lat: options.lat ?? null,
     lng: options.lng ?? null,
     locationLabel: options.locationLabel ?? "",
-    paths: photoPaths,
+    uploadIds,
   })
 
-  return { id, title, description, photoPaths }
+  return { id, title, description, uploadIds }
 }
 
 /** 直接调用 publish RPC 并返回原始结果（用于断言错误码） */
-export function publishItemRaw(
+export async function publishItemRaw(
   owner: TestUser,
   input: {
     title: string
@@ -88,11 +131,18 @@ export function publishItemRaw(
     lat?: number
     lng?: number
     locationLabel?: string
-    paths: string[]
+    /** 不传就按 photoCount 造登记；传了就按给定的 id 引用 */
+    uploadIds?: string[]
+    photoCount?: number
   }
-): PromiseLike<RpcResult<string>> {
-  // 同上：8 个参数必须齐全，缺失用 null
-  return owner.client.rpc("publish_found_item", {
+): Promise<RpcResult<string>> {
+  const uploadIds =
+    input.uploadIds ??
+    (await createUploads(owner.id, input.photoCount ?? 1)).map(
+      (upload) => upload.id
+    )
+
+  return (await owner.client.rpc("publish_found_item", {
     p_title: input.title,
     p_description: input.description,
     p_custody: input.custody,
@@ -101,8 +151,8 @@ export function publishItemRaw(
     p_location_lng: input.lng === undefined ? null : input.lng,
     p_location_label:
       input.locationLabel === undefined ? null : input.locationLabel,
-    p_paths: input.paths,
-  } as never) as unknown as PromiseLike<RpcResult<string>>
+    p_upload_ids: uploadIds,
+  } as never)) as unknown as RpcResult<string>
 }
 
 /** 真的往私有桶写一个对象（service_role），用于签名 URL / 直读权限用例 */
@@ -119,6 +169,30 @@ export async function uploadObject(
     throw new Error("上传测试对象失败：" + upload.error.message)
   }
   ctx.trackStoragePath(path)
+}
+
+// ---------- 运行期配置（限流阈值等） ----------
+
+export type AppConfig = {
+  max_photos: number
+  page_size: number
+  claim_per_hour: number
+  claim_per_day: number
+  ai_per_hour: number
+}
+
+export async function readAppConfig(): Promise<AppConfig> {
+  const admin = createAdminClient()
+  const result = await admin
+    .from("app_config")
+    .select("max_photos, page_size, claim_per_hour, claim_per_day, ai_per_hour")
+    .single()
+  if (result.error || !result.data) {
+    throw new Error(
+      "读取 app_config 失败：" + (result.error?.message ?? "unknown")
+    )
+  }
+  return result.data as unknown as AppConfig
 }
 
 // ---------- 读取（service_role oracle，用于断言“页面上不该出现什么”） ----------
@@ -200,16 +274,13 @@ export async function imageCount(
 
 export type PickupRow = { id: string }
 
+/** 认领：只提交物品 id，实名信息由服务端从 profiles 取 */
 export async function createPickup(
   picker: TestUser,
-  itemId: string,
-  name = picker.realName,
-  phone = picker.phone
+  itemId: string
 ): Promise<string> {
   const result = (await picker.client.rpc("create_pickup", {
     p_item_id: itemId,
-    p_name: name,
-    p_phone: phone,
   })) as unknown as RpcResult<string>
   if (result.error || !result.data) {
     throw new Error(
@@ -222,17 +293,13 @@ export async function createPickup(
   return result.data
 }
 
-/** 直接调用 create_pickup 返回原始结果（用于断言错误码/幂等） */
+/** 直接调用 create_pickup 返回原始结果（用于断言错误码/限流） */
 export function createPickupRaw(
   picker: TestUser,
-  itemId: string,
-  name: string,
-  phone: string
+  itemId: string
 ): PromiseLike<RpcResult<string>> {
   return picker.client.rpc("create_pickup", {
     p_item_id: itemId,
-    p_name: name,
-    p_phone: phone,
   }) as unknown as PromiseLike<RpcResult<string>>
 }
 
@@ -265,7 +332,7 @@ export function revealRaw(
   >
 }
 
-/** 拾主撤单（第 4 轮：只有 status = published 时才能成功） */
+/** 拾主撤单（只有 status = published 时才能成功） */
 export async function withdrawItem(
   owner: TestUser,
   itemId: string

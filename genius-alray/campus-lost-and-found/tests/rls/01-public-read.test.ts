@@ -37,7 +37,7 @@ describe("矩阵 1/3：published / claimed 可读，withdrawn 仅拾主可见", 
     ).id
 
     claimedId = (await publishItem(owner, { title: "已被认领的水杯" })).id
-    await createPickup(viewer, claimedId, "李四", "13900139000")
+    await createPickup(viewer, claimedId)
 
     withdrawnId = (await publishItem(owner, { title: "已撤单的钥匙" })).id
     await withdrawItem(owner, withdrawnId)

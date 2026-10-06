@@ -63,11 +63,8 @@ export function ClaimActions({
   function confirm() {
     setError(null)
     startTransition(async () => {
-      const result = await createPickupAction({
-        itemId,
-        name: profile?.real_name ?? "",
-        phone: profile?.phone ?? "",
-      })
+      // 只提交物品 id：姓名与手机号由服务端从 profiles 取，客户端伪造不了
+      const result = await createPickupAction({ itemId })
       if (!result.ok) {
         setError(result.error)
         return

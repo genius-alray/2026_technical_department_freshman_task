@@ -9,20 +9,47 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      ai_calls: {
+        Row: {
+          created_at: string
+          id: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: never
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: never
+          user_id?: string
+        }
+        Relationships: []
+      }
       app_config: {
         Row: {
+          ai_per_hour: number
+          claim_per_day: number
+          claim_per_hour: number
           id: boolean
           max_photos: number
           page_size: number
           updated_at: string
         }
         Insert: {
+          ai_per_hour?: number
+          claim_per_day?: number
+          claim_per_hour?: number
           id?: boolean
           max_photos?: number
           page_size?: number
           updated_at?: string
         }
         Update: {
+          ai_per_hour?: number
+          claim_per_day?: number
+          claim_per_hour?: number
           id?: boolean
           max_photos?: number
           page_size?: number
@@ -113,6 +140,30 @@ export type Database = {
         }
         Relationships: []
       }
+      image_uploads: {
+        Row: {
+          consumed_at: string | null
+          created_at: string
+          id: string
+          storage_path: string
+          uploader_id: string
+        }
+        Insert: {
+          consumed_at?: string | null
+          created_at?: string
+          id: string
+          storage_path: string
+          uploader_id: string
+        }
+        Update: {
+          consumed_at?: string | null
+          created_at?: string
+          id?: string
+          storage_path?: string
+          uploader_id?: string
+        }
+        Relationships: []
+      }
       pickups: {
         Row: {
           created_at: string
@@ -175,15 +226,97 @@ export type Database = {
         }
         Relationships: []
       }
+      publish_draft_images: {
+        Row: {
+          created_at: string
+          position: number
+          upload_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          position?: number
+          upload_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          position?: number
+          upload_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "publish_draft_images_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "image_uploads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "publish_draft_images_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "publish_drafts"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      publish_drafts: {
+        Row: {
+          contact: string | null
+          created_at: string
+          custody: Database["public"]["Enums"]["custody_kind"] | null
+          description: string
+          location_label: string | null
+          location_lat: number | null
+          location_lng: number | null
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          contact?: string | null
+          created_at?: string
+          custody?: Database["public"]["Enums"]["custody_kind"] | null
+          description?: string
+          location_label?: string | null
+          location_lat?: number | null
+          location_lng?: number | null
+          title?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          contact?: string | null
+          created_at?: string
+          custody?: Database["public"]["Enums"]["custody_kind"] | null
+          description?: string
+          location_label?: string | null
+          location_lat?: number | null
+          location_lng?: number | null
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      create_pickup: {
-        Args: { p_item_id: string; p_name: string; p_phone: string }
-        Returns: string
+      attach_draft_photo: { Args: { p_upload_id: string }; Returns: number }
+      consume_ai_quota: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          out_allowed: boolean
+          out_limit: number
+          out_used: number
+        }[]
       }
+      create_pickup: { Args: { p_item_id: string }; Returns: string }
+      detach_draft_photo: { Args: { p_upload_id: string }; Returns: string }
       get_app_config: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -208,8 +341,8 @@ export type Database = {
           p_location_label?: string
           p_location_lat?: number
           p_location_lng?: number
-          p_paths?: string[]
           p_title: string
+          p_upload_ids?: string[]
         }
         Returns: string
       }
@@ -226,6 +359,18 @@ export type Database = {
           out_location_lat: number
           out_location_lng: number
         }[]
+      }
+      save_publish_draft: {
+        Args: {
+          p_contact?: string
+          p_custody?: Database["public"]["Enums"]["custody_kind"]
+          p_description?: string
+          p_location_label?: string
+          p_location_lat?: number
+          p_location_lng?: number
+          p_title?: string
+        }
+        Returns: undefined
       }
       withdraw_found_item: {
         Args: { p_item_id: string }

@@ -46,8 +46,10 @@ confirm `SUPABASE_ACCESS_TOKEN` is visible to the dsh process
 
 ### Scope of the server
 
-The URL keeps the feature groups from the Supabase guide. To harden it, add
-`read_only=true` to the query string, which removes every mutating tool:
+The URL keeps the feature groups from the Supabase guide, and the entry is
+**writable**: the shipped patch does not set `read_only=true`, so every mutating
+tool stays available. To harden the project layer, add `read_only=true` to the
+query string, which removes every mutating tool:
 
 ```
 https://mcp.supabase.com/mcp?project_ref=iehxleycijdqlglnfbby&read_only=true&features=...
