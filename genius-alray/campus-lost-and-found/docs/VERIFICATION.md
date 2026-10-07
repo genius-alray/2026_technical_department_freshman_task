@@ -18,6 +18,18 @@
 > 安全矩阵与 E2E **需要本地 Supabase**（`pnpm db:start`），在容器运行时不可用的机器上跑不了。
 > 因此 `tests/rls/14-rate-limits`（新增的发布限流断言）与 `tests/rls/16-prune-drafts`（草稿回收）
 > 必须在有 Supabase 的机器上跑一次 `pnpm test:rls` 才算验证通过 —— 本文档不预支这个结论。
+>
+> **生产库落地记录（2026-10-07）**：8 个迁移已由 `supabase db push` 推到生产项目
+> （`iehxleycijdqlglnfbby` / Southeast Asia (Singapore) / Postgres 17.11）。
+> 核对方式是 `supabase gen types typescript --linked` 生成远端 schema，再与仓库里的
+> `lib/database.types.ts` 逐行对比：**public schema 零差异** —— 9 张表、8 个函数、
+> `publish_per_day` / `publish_per_week` 两列都在；仅有的差异是 CLI 版本带来的
+> `__InternalSupabase` / `graphql_public` / `Args: never` 写法，与本项目 schema 无关。
+>
+> **PostgREST 冒烟仍未做**：执行这台机器访问不了 `<ref>.supabase.co`（TLS 连接被重置，
+> 只有 `api.supabase.com` 通），所以「anon 读公开列 200 / 读 `contact` 42501 /
+> 直插被拒 / 私有桶不可列」这几条要在能访问该域名的机器上补验 ——
+> 它们正是 `tests/rls/06-rest-privacy` 覆盖的断言。
 
 ## 2. 安全矩阵（tests/rls，16 个文件）
 
