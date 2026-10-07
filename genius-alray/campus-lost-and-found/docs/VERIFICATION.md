@@ -26,10 +26,13 @@
 > `publish_per_day` / `publish_per_week` 两列都在；仅有的差异是 CLI 版本带来的
 > `__InternalSupabase` / `graphql_public` / `Args: never` 写法，与本项目 schema 无关。
 >
-> **PostgREST 冒烟仍未做**：执行这台机器访问不了 `<ref>.supabase.co`（TLS 连接被重置，
-> 只有 `api.supabase.com` 通），所以「anon 读公开列 200 / 读 `contact` 42501 /
-> 直插被拒 / 私有桶不可列」这几条要在能访问该域名的机器上补验 ——
-> 它们正是 `tests/rls/06-rest-privacy` 覆盖的断言。
+> **PostgREST 冒烟（已补做，通过）**：网络恢复后直连生产项目验证了客户端身份边界 ——
+> anon 读 `found_items(id)` → 200；读 `contact` → **42501**；读 `app_config` → 42501；
+> 调 `consume_ai_quota` → 42501（permission denied for function）；调 `get_app_config()` → 200。
+> service_role 读 `image_uploads` / `publish_drafts` / `app_config` → 均 200，
+> 并读到 `publish_per_day=10` / `publish_per_week=30` —— 第 15 轮的显式授权与第 14 轮的发布限流
+> **都已在生产生效**。仍未覆盖：真实浏览器里的端到端流程（那需要 `pnpm test:rls` / `pnpm test:e2e`，
+> 前提是本机起得来 Supabase）。
 
 ## 2. 安全矩阵（tests/rls，16 个文件）
 
