@@ -34,7 +34,7 @@
 > **都已在生产生效**。仍未覆盖：真实浏览器里的端到端流程（那需要 `pnpm test:rls` / `pnpm test:e2e`，
 > 前提是本机起得来 Supabase）。
 
-## 2. 安全矩阵（tests/rls，16 个文件）
+## 2. 安全矩阵（tests/rls，18 个文件）
 
 | #   | 断言                                                                                                     |
 | --- | -------------------------------------------------------------------------------------------------------- |
@@ -45,7 +45,7 @@
 | 5   | `reveal_found_item_contact`：仅拾主本人或已认领者                                                        |
 | 6   | `create_pickup`：认领即置 claimed；**允许多人认领**；拾主不能认领自己的；已撤单拒绝；本人重复提交 = 更新 |
 | 7   | `withdraw_found_item`：仅 owner 且 status=published；已认领 → P0001                                      |
-| 8   | `release_found_item_claim`：认领人可撤回，物品回到 published，记录保留                                   |
+| 8   | `release_found_item_claim`：撤回只摘掉自己；还有人认领时物品保持 claimed，最后一个活跃认领撤回才回到 published；记录保留（`released_at`），可再认领 |
 | 9   | `publish_found_item`：照片数量 1..max_photos；路径前缀必须是自己的 uid；in_place 必须有位置详情                                   |
 | 10  | RPC 契约守卫：只给必填参数也能被解析（不能是 PGRST202）                                                  |
 | 11  | `listMyItems` / `listMyPickups` 显式按 owner/picker 收窄（RLS 公开读之后必须自己做）                     |
@@ -55,6 +55,7 @@
 | 15  | 频率限制：认领 1 小时 2 次 / 24 小时 5 次（重复提交不计数）；**发布 24 小时 10 条 / 7 天 30 条（第 10 条放行、第 11 条被拒；周阈值在当天额度没用完时也会生效；撤单不释放额度；按账号隔离）**；AI 配额每小时 10 次、按用户隔离；anon 不可调用 |
 | 16  | 发布草稿：**一个用户只有一份**（主键保证，重复插入 → 23505）；客户端只读自己的、写一律走 RPC；挂载张数受 `max_photos` 限制；移除照片会删掉登记行并交回存储路径；发布成功后草稿清空 |
 | 17  | 草稿回收：超过 30 天没动过的草稿连同**照片对象 + 上传登记行 + 草稿行**一起删除；还在用的草稿一根毫毛都不动；重复运行幂等（第二次什么都不删） |
+| 18  | 撤回认领的多人语义：A、B 都认领后 A 撤回 → 物品仍 claimed、A 退出认领人名单且不再放行联系方式；B 也撤回后回到 published；撤回记录保留且可再认领；重复撤回 / 未认领者撤回 → 42501；不存在物品 → P0002 |
 
 ## 3. 端到端场景（tests/e2e）
 
@@ -181,6 +182,15 @@
       `setPhase("publishing")` 因此要等 `publishItemAction` 返回才生效，按钮文案/转圈永远不出现
       （`isPending` 确实会让按钮禁用，但没有可见反馈，看着就是卡死）。修法：`run()` 先同步置
       `phase`（紧急更新）再进 transition，并把「只弹提示」的前置校验移出 transition。
+
+27. **撤回认领会把别人的认领一起作废**：`release_found_item_claim` 无条件把物品从 `claimed` 改回
+    `published`。第 7 轮起允许多人认领后，A、B 都认领时 A 点「领错了？」→ 物品变回「待认领」，
+    B 的认领被无声作废，第三人还能再认领。单看 `pickups` 行是否存在也修不掉 —— 「认领记录保留」
+    意味着撤回者那一行还在，只判断「有没有别人的行」会让最后一个撤回的人把物品永远卡在 claimed。
+    修法（第 18 轮）：`pickups` 增加 `released_at`（null = 仍在认领），撤回只打时间戳；还有人活跃
+    认领就保持 claimed，清零才回到 published；认领人名单与 `reveal_found_item_contact` 也只认活跃记录。
+    回归防线：`tests/rls/18-release-claim.test.ts`。修复随新增迁移
+    `20261007140000_release_claim_guard.sql` 下发，生产需要重新 `supabase db push` 才会生效。
 
 ## 5. 已知限制
 

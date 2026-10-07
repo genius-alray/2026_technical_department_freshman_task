@@ -16,7 +16,10 @@ import {
 
 import { releaseClaimAction } from "@/app/items/actions"
 
-/** 「拿错了，不是我的」：撤回认领，物品回到待认领（认领记录保留） */
+/**
+ * 「拿错了，不是我的」：撤回认领。
+ * 记录保留，之后还能再认领；若还有别人在认领，物品仍保持「已认领」。
+ */
 export function ReleaseClaim({ itemId }: { itemId: string }) {
   const router = useRouter()
   const [open, setOpen] = React.useState(false)
@@ -55,7 +58,8 @@ export function ReleaseClaim({ itemId }: { itemId: string }) {
           <DialogHeader>
             <DialogTitle>撤回认领？</DialogTitle>
             <DialogDescription>
-              物品会回到「寻找失主中」，你提交的认领信息会保留，之后仍可以再认领。
+              你会退出认领人名单；如果还有其他人认领，物品会保持「已认领」，
+              没有别人才回到「寻找失主中」。你提交的认领信息会保留，之后仍可以再认领。
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

@@ -67,7 +67,7 @@ E2E 要求 3000 端口空闲——配置里是 `reuseExistingServer: false`，�
 ```bash
 supabase login                                   # 或 export SUPABASE_ACCESS_TOKEN=...
 supabase link --project-ref <project-ref>
-supabase db push                                 # 重放 supabase/migrations 下 8 个迁移
+supabase db push                                 # 重放 supabase/migrations 下的全部迁移
 supabase gen types typescript --project-ref <ref> --schema public > lib/database.types.ts
 ```
 
@@ -129,7 +129,7 @@ Supabase 项目，并开启 Deployment Protection。构建时对此会打警告�
     app/         页面与 Server Actions：(auth) 登录注册、(wall) 失物墙、publish、items、me、api/upload、api/cron
     components/  nav 标题栏、motion 动效、auth 人机校验、contact 电话/位置、claim、media、pwa、ui（shadcn）
     lib/         db 数据访问、ai 提供方、supabase 客户端、storage、validation zod schema、geo、env、deploy-env
-    supabase/    migrations（8 个）与本地配置
+    supabase/    migrations（10 个）与本地配置
     tests/       unit、component、rls、e2e、live
     docs/        需求、计划、UI 规范、验证记录、技能审计
     vercel.json  定时任务（草稿回收）配置

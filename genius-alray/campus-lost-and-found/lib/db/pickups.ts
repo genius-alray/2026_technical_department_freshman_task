@@ -14,9 +14,11 @@ export async function createPickup(
 }
 
 /**
- * 我提交过的领取记录。
+ * 我提交过的领取记录（只算还在认领的）。
  * 【必须显式过滤 picker_id】pickups 的 RLS 是「picker_id = 我 或 该物品的 owner 是我」，
  * 不加过滤会把**别人在我的物品上提交的领取记录**也一起返回 —— 与 listMyItems 是同一类坑。
+ * 【只算还在认领的】released_at is null；撤回过的记录保留在库里（审计 + 可再认领），
+ * 但不再显示为「我的认领」。
  */
 export async function listMyPickups(
   supabase: DbClient,
@@ -29,11 +31,15 @@ export async function listMyPickups(
         "id, found_item_id, picker_id, picker_name, picker_phone, created_at"
       )
       .eq("picker_id", pickerId)
+      .is("released_at", null)
       .order("created_at", { ascending: false })
   )
 }
 
-/** 我对某个物品的认领记录（认领信息屏要用）。RLS：picker_id = 我 可见。 */
+/**
+ * 我对某个物品的认领记录（认领信息屏要用）。RLS：picker_id = 我 可见。
+ * 已撤回（released_at 非空）返回 null —— 认领信息屏据此把撤回的人送回详情页。
+ */
 export async function getMyPickup(
   supabase: DbClient,
   itemId: string,
@@ -47,6 +53,7 @@ export async function getMyPickup(
       )
       .eq("found_item_id", itemId)
       .eq("picker_id", pickerId)
+      .is("released_at", null)
       .maybeSingle()
   )
 }
@@ -79,14 +86,18 @@ export async function listItemClaimers(
   }))
 }
 
-/** 撤回认领（「拿错了，不是我的」）：物品回到待认领，认领记录保留 */
+/**
+ * 撤回认领（「拿错了，不是我的」）。
+ * 记录保留（released_at 打时间戳），只有**没有其他人还在认领**时物品才回到待认领；
+ * 否则物品保持已认领，撤回的人只是退出认领人名单。返回物品的最终状态。
+ */
 export async function releaseClaim(supabase: DbClient, itemId: string) {
   return unwrap(
     await supabase.rpc("release_found_item_claim", { p_item_id: itemId })
   )
 }
 
-/** 拾主查看某个物品的领取人名单（RLS：物品 owner 可见） */
+/** 拾主查看某个物品的认领人名单（RLS：物品 owner 可见；只列还在认领的人） */
 export async function listItemPickups(
   supabase: DbClient,
   itemId: string
@@ -98,6 +109,7 @@ export async function listItemPickups(
         "id, found_item_id, picker_id, picker_name, picker_phone, created_at"
       )
       .eq("found_item_id", itemId)
+      .is("released_at", null)
       .order("created_at", { ascending: false })
   )
 }

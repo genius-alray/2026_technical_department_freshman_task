@@ -71,7 +71,9 @@
    （认领指引 3 步 + 拾主联系方式/位置 + 我的认领）。
 3. **允许多人认领**同一物品（认领只是登记，归属靠线下协商）：已被别人认领时详情页仍给「我也要认领」；
    认领信息屏会列出**其他认领人**并给冲突警告。
-4. 「**领错了？**」可撤回认领：物品回到待认领，**认领记录保留**，之后还能再认领。
+4. 「**领错了？**」可撤回认领：只把自己从认领人名单里摘掉，**认领记录保留**（之后还能再认领）。
+   **还有其他人认领时物品保持「已认领」**；只有最后一个活跃认领也撤回后，才回到待认领
+   （撤回时间记在 `pickups.released_at`，见第 18 轮）。
 5. 拾主不能认领自己发布的物品；同一人重复提交视为更新，不产生第二条记录。
 6. 已认领的物品仍然留在失物墙上，带「已认领」标签；拾主不能撤单已被认领的物品。
 7. **实名由服务端决定**：客户端只提交物品 id（`create_pickup` 只有 `p_item_id` 一个参数），
@@ -87,12 +89,16 @@
 - 顶部是**头像 + 姓名 + 手机号卡片**，右侧「退出」按钮（danger + 二次确认）；点卡片进 `/me/profile` 修改。
 - **我的发布**：自己的全部物品（含已认领、已撤单）；状态徽标「寻找失主中 / 已认领 / 已撤单」；
   只有**未认领**时可以「撤单」（danger + 二次确认）；可查看**认领人名单**。
-- **我的认领**：自己提交过的认领记录；**卡片整卡点进物品详情页**（不在列表里内联姓名/手机号/揭晓结果）。
+- **我的认领**：自己**当前有效**的认领记录（已撤回的不再显示，但记录仍保留在库里）；
+  **卡片整卡点进物品详情页**（不在列表里内联姓名/手机号/揭晓结果）。
 
 ### 3.5 状态机
 
 ```
 published ──(第一个认领人提交)──> claimed    （仍在墙上，带标签；拾主不能撤单）
+    ▲                               │
+    └──(最后一个活跃认领撤回)───────┘   还有别人认领 → 保持 claimed
+    │
     └──────(拾主撤单)─────────> withdrawn  （从墙上消失，仅拾主可见）
 ```
 
@@ -136,7 +142,8 @@ found_items        id, owner_id, title, description, custody, contact, location_
                    status(published|claimed|withdrawn), created_at, updated_at,
                    claimed_at, withdrawn_at
 found_item_images  id, found_item_id, storage_path, position
-pickups            id, found_item_id, picker_id, picker_name, picker_phone, created_at
+pickups            id, found_item_id, picker_id, picker_name, picker_phone, created_at,
+                   released_at (null = 仍在认领，非 null = 已撤回)
                    unique(found_item_id, picker_id)
 profiles           id, real_name(NOT NULL, 2–20 字), phone(NOT NULL, 唯一, 11 位), created_at, updated_at
 image_uploads      id, uploader_id, storage_path, created_at, consumed_at
@@ -160,7 +167,7 @@ publish_draft_images user_id + upload_id(PK), position —— 草稿里的照片
 | `withdraw_found_item(p_item_id)`            | 物品 owner     | 撤单；**仅 status=published 时允许**（已认领 → P0001）                                                          |
 | `create_pickup(p_item_id)`                  | authenticated  | 实名认领：姓名/手机号**从 profiles 取**；成功即置 claimed；允许多人认领；已撤单 → P0001；拾主认领自己的 → 42501；本人重复提交为更新；**限流 1h/2 次、24h/5 次**（重复提交不计数） |
 | `reveal_found_item_contact(p_item_id)`      | 拾主或已认领者 | 返回联系方式或位置                                                                                              |
-| `release_found_item_claim(p_item_id)`       | 认领人本人     | 撤回认领：物品回到 published，**认领记录保留**（之后仍可再认领）                                                |
+| `release_found_item_claim(p_item_id)`       | 认领人本人     | 撤回认领：只把自己标记为已撤回（`released_at`），**记录保留**；还有人认领 → 物品保持 claimed，最后一个活跃认领撤回才回到 published |
 | `list_found_item_claimers(p_item_id)`       | 拾主或已认领者 | 列出该物品的**全部认领人**，用于多人认领时互相联系                                                              |
 | `get_app_config()`                          | anon + 登录    | 返回 max_photos / page_size                                                                                     |
 | `consume_ai_quota()`                        | 登录用户       | 消耗一次 AI 配额，返回 (allowed, used, limit)；超限返回 allowed=false，调用方跳过 AI 并提示 |

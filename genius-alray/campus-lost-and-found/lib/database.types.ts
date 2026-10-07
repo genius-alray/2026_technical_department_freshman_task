@@ -178,6 +178,7 @@ export type Database = {
           picker_id: string
           picker_name: string
           picker_phone: string
+          released_at: string | null
           updated_at: string
         }
         Insert: {
@@ -187,6 +188,7 @@ export type Database = {
           picker_id: string
           picker_name: string
           picker_phone: string
+          released_at?: string | null
           updated_at?: string
         }
         Update: {
@@ -196,6 +198,7 @@ export type Database = {
           picker_id?: string
           picker_name?: string
           picker_phone?: string
+          released_at?: string | null
           updated_at?: string
         }
         Relationships: [

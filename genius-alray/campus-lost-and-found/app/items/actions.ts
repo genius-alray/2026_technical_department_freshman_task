@@ -20,8 +20,9 @@ import type { RevealedContact } from "@/lib/types"
 import type { LoadMoreResult, PickupResult, SimpleResult } from "./types"
 
 /**
- * 「拿错了，不是我的」：撤回自己的认领，物品回到待认领。
- * 认领记录保留（数据库侧不删行），所以他还能再认领。
+ * 「拿错了，不是我的」：撤回自己的认领。
+ * 认领记录保留（数据库侧不删行，只打 released_at），所以他还能再认领；
+ * 只有没有其他人还在认领时，物品才回到待认领（由 RPC 判定）。
  */
 export async function releaseClaimAction(
   itemId: string

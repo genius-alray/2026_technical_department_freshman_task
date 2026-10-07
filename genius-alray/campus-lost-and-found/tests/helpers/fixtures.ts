@@ -359,6 +359,32 @@ export function withdrawItemRaw(
   }) as unknown as PromiseLike<RpcResult<string>>
 }
 
+/**
+ * 撤回认领（本人）。
+ * 只有没有其他人还在认领时物品才回到 published，否则保持 claimed。
+ */
+export async function releaseClaim(
+  picker: TestUser,
+  itemId: string
+): Promise<void> {
+  const result = (await picker.client.rpc("release_found_item_claim", {
+    p_item_id: itemId,
+  })) as unknown as RpcResult<string>
+  if (result.error) {
+    throw new Error("撤回认领失败：" + result.error.message)
+  }
+}
+
+/** 直接调用 release_found_item_claim，返回原始结果（用于断言错误码/最终状态） */
+export function releaseClaimRaw(
+  picker: TestUser,
+  itemId: string
+): PromiseLike<RpcResult<string>> {
+  return picker.client.rpc("release_found_item_claim", {
+    p_item_id: itemId,
+  }) as unknown as PromiseLike<RpcResult<string>>
+}
+
 /** 用 service_role 直接种入历史条目（构造「今天/本周已经发过 N 条」的等价状态） */
 export async function seedPublishedItems(
   ownerId: string,
