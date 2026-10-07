@@ -157,6 +157,28 @@
     修法（配置侧，代码只能提醒）：构建时若发现 `VERCEL_ENV=preview` 且存在该密钥就打警告，
     文档里要求把密钥作用域限制为 Production / 给预览单独建项目 / 开启 Deployment Protection。
 
+25. **上线后上传图片必挂：`permission denied for table image_uploads`（42501）** —— 之前的迁移只显式
+    grant 了 `found_items` / `found_item_images` 与各 RPC 的 execute，**其余表一律指望 Supabase 平台的
+    「新建表自动授权」**（`auto_expose_new_tables` / postgres 的 default privileges）。那个机制只对
+    **由 `postgres` 角色创建**的对象生效，而 `supabase db push` 用的是 CLI 的临时登录角色
+    （`cli_login_postgres`），云端新项目又已默认要求显式 GRANT —— 于是表建出来了，`service_role`
+    却一个权限都没有，`/api/upload` 落库那一步直接 42501（存储对象倒是传上去了，所以表象是
+    「照片传不上去」而不是「整个发布挂掉」）。
+    本地 `db reset` 用 postgres 跑迁移、且 `config.toml` 的开关默认按 `true` 走，所以**本地永远复现不出来**。
+    修法：新增 `20261007130000_explicit_grants.sql`，把 service_role 需要的表权限显式写死；
+    同时把 `auto_expose_new_tables` 设成 `false`，让本地与云端同一套规则。
+    回归防线：`tests/rls/17-server-privileges.test.ts`（服务端身份到底能不能干活）。
+26. **弱网下「点了没反应」**（两处，同一类问题：等待期间没有任何可见反馈）：
+    - **首页「我捡到了东西」**：按钮是 `<Link>`，发布页要查 4 次库 + 签一次图片 URL，
+      手机网络下要等一两秒，期间界面还停在首页、按钮毫无变化。修法：在 `<Link>` 内部用
+      `useLinkStatus()` 读这次导航的 pending，导航一开始就切成「正在打开…」+ 转圈
+      （`app/(wall)/publish-entry.tsx`）。
+    - **发布页的「发布」按钮**：`handlePublish` 整段跑在 `startTransition` 里，
+      而 **transition 内的 setState 会被 React 推迟到 transition 结束才提交** ——
+      `setPhase("publishing")` 因此要等 `publishItemAction` 返回才生效，按钮文案/转圈永远不出现
+      （`isPending` 确实会让按钮禁用，但没有可见反馈，看着就是卡死）。修法：`run()` 先同步置
+      `phase`（紧急更新）再进 transition，并把「只弹提示」的前置校验移出 transition。
+
 ## 5. 已知限制
 
 - **Service Worker 只在生产构建注册**（`pnpm dev` 与 E2E 都不注册），所以缓存行为没有浏览器自动化覆盖，

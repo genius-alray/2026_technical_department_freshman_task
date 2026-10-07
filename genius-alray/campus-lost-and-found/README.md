@@ -72,6 +72,11 @@ supabase gen types typescript --project-ref <ref> --schema public > lib/database
 ```
 
 `db push` 会一并建好私有桶 `item-images`、写入 `app_config` 默认阈值、装好全部 RPC 与列级 REVOKE。
+
+> **权限必须显式 GRANT**：云端的新项目不再自动给 `anon` / `authenticated` / `service_role` 授权
+> （本地 `config.toml` 的 `auto_expose_new_tables` 也已设成 `false` 与云端对齐）。所有权限都写在
+> `supabase/migrations/` 里，`20261007130000_explicit_grants.sql` 补的是 `service_role` 的整表权限 ——
+> 少了它，线上表现是上传图片报 `permission denied for table image_uploads`（42501），而本地全绿。
 **控制台里必须手动设置的项**（`supabase/config.toml` 只作用于本地，`db push` 不会带上云）：
 
 | 位置                                                    | 设置                                                     | 为什么                                                                                       |

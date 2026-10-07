@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { CameraIcon, Trash2Icon } from "lucide-react"
+import { CameraIcon, Loader2Icon, Trash2Icon } from "lucide-react"
 
 import {
   DURATION,
@@ -435,7 +435,17 @@ export function PublishClient({ maxPhotos, defaultContact, draft }: Props) {
     inputRef.current?.click()
   }
 
-  function run(task: () => Promise<void>) {
+  /**
+   * 跑一段「会改服务端状态」的异步任务，期间把界面锁住。
+   *
+   * 【为什么 phase 必须在 transition 外面置】run 的整段是一个 async transition，
+   * 而 transition 里的 setState 会被 React 压到这次 transition 结束才提交 ——
+   * 原来的 setPhase("publishing") 因此要等 publishItemAction 返回才生效：
+   * 弱网下用户看到的就是「点了发布，按钮十几秒一动不动」，明明 isPending 为真，
+   * 却没有任何可见反馈，像卡死。先同步置 phase 再进 transition，反馈就是即时的。
+   */
+  function run(phase: Exclude<Phase, "idle">, task: () => Promise<void>) {
+    setPhase(phase)
     startTransition(async () => {
       try {
         await task()
@@ -453,25 +463,24 @@ export function PublishClient({ maxPhotos, defaultContact, draft }: Props) {
 
   function handleFiles(files: File[]) {
     if (files.length === 0) return
-    run(async () => {
-      if (remaining === 0) {
-        toast.add({
-          type: "error",
-          title: "每个物品最多 " + maxPhotos + " 张照片",
-        })
-        return
-      }
+    // 前置检查同步做完：这类「只弹个提示」的分支不该先闪一下 loading
+    if (remaining === 0) {
+      toast.add({
+        type: "error",
+        title: "每个物品最多 " + maxPhotos + " 张照片",
+      })
+      return
+    }
 
-      const batch = files.slice(0, remaining)
-      if (batch.length < files.length) {
-        toast.add({
-          type: "info",
-          title: "最多再上传 " + remaining + " 张，已忽略多余照片",
-        })
-      }
+    const batch = files.slice(0, remaining)
+    if (batch.length < files.length) {
+      toast.add({
+        type: "info",
+        title: "最多再上传 " + remaining + " 张，已忽略多余照片",
+      })
+    }
 
-      setPhase("uploading")
-
+    run("uploading", async () => {
       for (let index = 0; index < batch.length; index += 1) {
         setUploadNote("正在上传第 " + (index + 1) + "/" + batch.length + " 张…")
         const compressed = await compressImage(batch[index])
@@ -563,37 +572,37 @@ export function PublishClient({ maxPhotos, defaultContact, draft }: Props) {
   }
 
   function handlePublish() {
-    run(async () => {
-      if (uploadIds.length === 0) {
-        toast.add({ type: "error", title: "请至少上传一张照片" })
-        return
-      }
-      if (!title.trim()) {
-        toast.add({ type: "error", title: "请填写物品名称" })
-        return
-      }
-      if (!description.trim()) {
-        toast.add({ type: "error", title: "请填写物品描述" })
-        return
-      }
-      if (!custody) {
-        toast.add({ type: "error", title: "请选择保管方式" })
-        return
-      }
-      if (custody === "kept" && contact.trim().length < 5) {
-        toast.add({
-          type: "error",
-          title: "账号缺少手机号，请先在「我的」里补充",
-        })
-        return
-      }
-      // 位置详情必填：定位只是补充，失主最终要靠这句话找到东西
-      if (custody === "in_place" && locationLabel.trim().length < 1) {
-        toast.add({ type: "error", title: "请填写位置详情" })
-        return
-      }
+    // 校验全是本地判断，同步做完再进提交 —— 校验不过就不会出现「闪一下正在发布」
+    if (uploadIds.length === 0) {
+      toast.add({ type: "error", title: "请至少上传一张照片" })
+      return
+    }
+    if (!title.trim()) {
+      toast.add({ type: "error", title: "请填写物品名称" })
+      return
+    }
+    if (!description.trim()) {
+      toast.add({ type: "error", title: "请填写物品描述" })
+      return
+    }
+    if (!custody) {
+      toast.add({ type: "error", title: "请选择保管方式" })
+      return
+    }
+    if (custody === "kept" && contact.trim().length < 5) {
+      toast.add({
+        type: "error",
+        title: "账号缺少手机号，请先在「我的」里补充",
+      })
+      return
+    }
+    // 位置详情必填：定位只是补充，失主最终要靠这句话找到东西
+    if (custody === "in_place" && locationLabel.trim().length < 1) {
+      toast.add({ type: "error", title: "请填写位置详情" })
+      return
+    }
 
-      setPhase("publishing")
+    run("publishing", async () => {
       const result = await publishItemAction({
         uploadIds,
         title: title.trim(),
@@ -880,7 +889,14 @@ export function PublishClient({ maxPhotos, defaultContact, draft }: Props) {
                 disabled={busy}
                 onClick={handlePublish}
               >
-                {phase === "publishing" ? "正在发布…" : "发布"}
+                {phase === "publishing" ? (
+                  <>
+                    <Loader2Icon className="animate-spin" aria-hidden />
+                    正在发布…
+                  </>
+                ) : (
+                  "发布"
+                )}
               </Button>
             </TapScale>
           </div>

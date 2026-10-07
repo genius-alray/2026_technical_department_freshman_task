@@ -20,7 +20,11 @@ max_rows = 1000
 # `postgres` are reachable through the Data API roles (`anon`, `authenticated`, `service_role`)
 # without explicit GRANTs, matching the cloud default. Set to `false` to require explicit GRANTs
 # instead. Left unset, a fresh project falls back to `true`.
-# auto_expose_new_tables = true
+#
+# 【第 15 轮改成 false】云端的新项目已默认要求「显式 GRANT」；本地如果还靠隐式授权兜底，
+# 就会出现「本地全绿、线上 42501」这类最难查的偏差（线上上传图片失败就是这么来的，
+# 见 20261007130000_explicit_grants.sql）。这里与云端对齐：所有权限都写在迁移里。
+auto_expose_new_tables = false
 
 [api.tls]
 # Enable HTTPS endpoints locally using a self-signed certificate.

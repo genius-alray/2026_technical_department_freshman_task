@@ -1,6 +1,5 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import { PlusIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -19,6 +18,8 @@ import { createSignedUrlMap } from "@/lib/storage/signed"
 import { createClient, getCurrentUser } from "@/lib/supabase/server"
 
 import { ItemWall } from "../items/item-wall"
+
+import { PublishEntryContent } from "./publish-entry"
 
 export const metadata: Metadata = {
   title: "失物墙 · 校园失物招领",
@@ -65,8 +66,7 @@ export default async function HomePage() {
         render={<Link href={authed ? "/publish" : "/login?next=%2Fpublish"} />}
         data-testid="publish-entry"
       >
-        <PlusIcon aria-hidden />
-        我捡到了东西
+        <PublishEntryContent label="我捡到了东西" />
       </Button>
 
       {listed.length === 0 ? (
