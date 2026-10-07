@@ -10,6 +10,13 @@ import { PublishClient } from "./publish-client"
 
 export const dynamic = "force-dynamic"
 
+/**
+ * AI 识别是这一页里的 Server Action，而 lib/ai/ai-sdk.ts 给模型端设了 60s 硬超时。
+ * 不显式声明就吃平台默认值：Vercel 启用 Fluid Compute 时是 300s（够用），
+ * 没启用时 Hobby 只有 10s —— 会在识别到一半时被平台掐断。
+ */
+export const maxDuration = 60
+
 export default async function PublishPage() {
   const user = await getCurrentUser()
   if (!user) redirect("/login")

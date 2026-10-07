@@ -1,7 +1,8 @@
 # 校园失物招领系统 —— 细化需求说明（简化版）
 
 > 本文件是当前唯一有效的需求契约。技术栈：Next.js 16.3.6 + React 19 + Tailwind v4 + shadcn v4（Base UI）+ Supabase（本地 podman）。
-> 本轮做了大幅简化：**取消答题验证、人工审核、标签体系、寻物启事、草稿系统与相似度匹配**。
+> 本轮做了大幅简化：**取消答题验证、人工审核、标签体系、寻物启事与相似度匹配**。
+> 第 14 轮补回了两件事：**发布草稿**（单例，见 3.2）与**上线加固**（发布限流、人机校验、部署前哨）。
 
 ---
 
@@ -9,7 +10,8 @@
 
 **做**：账号系统、发布招领（拍照 → AI 生成名称与描述 → 怎么还 → 详细设置）、失物墙（公开浏览）、实名认领、我的页面。
 
-**不做**：答题验证、人工审核、寻物启事与匹配、标签体系、草稿、通知推送、地图 SDK、云端部署。
+**不做**：答题验证、人工审核、寻物启事与匹配、标签体系、通知推送、地图 SDK、短信验证码。
+**部署**：Vercel（应用）+ Supabase 云端（数据库/认证/存储），运维清单见 README。
 
 ---
 
@@ -18,6 +20,9 @@
 - **手机号就是账号**：注册填真实姓名 + 手机号 + 密码，并勾选同意《服务条款》《隐私政策》；
   登录用手机号 + 密码（**不做短信验证码**），手机号映射为内部邮箱 `<phone>@<NEXT_PUBLIC_AUTH_EMAIL_DOMAIN>`。
 - 手机号必须是中国大陆 11 位手机号且唯一；姓名 2–20 字。二者在 `profiles` 里都是 NOT NULL。
+- **注册与登录都过人机校验**（Cloudflare Turnstile，token 随请求交给 Supabase 校验）：
+  账号是手机号且不发短信验证码，没有这道门槛时脚本可以批量注册并占走真实用户的号码。
+  `NEXT_PUBLIC_TURNSTILE_SITE_KEY` 为空则不渲染（本地与自动化测试），线上必须配。
 - 个人信息可在 `/me/profile` 修改（支持 `?next=` 回到来源页）。**认领时直接复用账号信息，不再让用户重复填**。
 - **改手机号会一并改登录账号**：`profiles.phone` 与 `auth.users.email`（由手机号派生）是一对不变量，
   保存资料时先同步登录账号再写 `profiles`；任一步失败都不落库，绝不留下「资料是新号、登录用旧号」的状态。
@@ -71,8 +76,11 @@
 6. 已认领的物品仍然留在失物墙上，带「已认领」标签；拾主不能撤单已被认领的物品。
 7. **实名由服务端决定**：客户端只提交物品 id（`create_pickup` 只有 `p_item_id` 一个参数），
    姓名与手机号一律从 `profiles` 读 —— 前端传什么都不算数，也传不进来。
-8. **频率限制**：认领 1 小时最多 2 次、24 小时最多 5 次（同一件物品重复提交不计次）；
-   AI 识别每小时最多 10 次，超限时**跳过 AI 并弹 warning toast**，用户可以手填名称/描述继续发布。
+8. **频率限制**（阈值都在 `app_config`，由 RPC 强制，直连 PostgREST 也绕不过）：
+   - 认领：1 小时最多 2 次、24 小时最多 5 次（同一件物品重复提交不计次）；
+   - 发布：24 小时最多 10 条、7 天最多 30 条（第 14 轮补；撤单的条目同样计入 ——
+     否则「发完就撤」就是绕过限流的免费通道）；
+   - AI 识别：每小时最多 10 次，超限时**跳过 AI 并弹 warning toast**，用户可以手填名称/描述继续发布。
 
 ### 3.4 我的
 
@@ -116,7 +124,9 @@ published ──(第一个认领人提交)──> claimed    （仍在墙上，�
 | 图片        | 私有桶，无任何客户端读写策略；上传走 `/api/upload`（service_role），读取由服务端签发 1 小时签名 URL                                                            |
 | **上传归属** | `image_uploads` 登记表：客户端只拿到不透明 `uploadId`，**存储路径与归属判定都留在服务端**；发布按 id 校验（引用他人 → 42501），不再有「路径前缀」这类比较 |
 | **上传内容** | 除声明的 MIME 与体积外，还按**文件头魔数**校验（`sniffImageMime`），对不上直接 415 |
-| **限流**     | 认领 1 小时 2 次 / 24 小时 5 次；AI 每小时 10 次。阈值在 `app_config`，由 RPC 强制（直连 PostgREST 也绕不过） |
+| **限流**     | 认领 1 小时 2 次 / 24 小时 5 次；**发布 24 小时 10 条 / 7 天 30 条**；AI 每小时 10 次。阈值在 `app_config`，由 RPC 强制（直连 PostgREST 也绕不过） |
+| **人机校验** | 注册与登录走 Cloudflare Turnstile（token 交 Supabase 校验）；sitekey 为空时不渲染（本地 / 测试）。CSP 单独放行 `challenges.cloudflare.com` 的 script 与 frame |
+| **部署前哨** | `lib/deploy-env.ts` 在**构建期**拦住三类「部署成功但用不了」：缺必需环境变量、`NEXT_PUBLIC_SUPABASE_URL` 非法（CSP 依赖它算 origin）、生产环境仍是 `AI_PROVIDER=mock`（假识别） |
 | **响应头**   | 全站 CSP（放行 Supabase origin、`frame-ancestors 'none'`）+ nosniff + Referrer-Policy + Permissions-Policy；非 dev 额外发 HSTS |
 
 ### 4.2 数据表
@@ -132,8 +142,12 @@ profiles           id, real_name(NOT NULL, 2–20 字), phone(NOT NULL, 唯一, 
 image_uploads      id, uploader_id, storage_path, created_at, consumed_at
                    —— 上传登记：客户端只拿 id（RLS 只能读自己那些行），路径只由服务端使用
 ai_calls           id, user_id, created_at      —— AI 配额计数，客户端完全不可见（只经 RPC）
-app_config         max_photos(3), page_size(20), claim_per_hour(2), claim_per_day(5), ai_per_hour(10)
+app_config         max_photos(3), page_size(20), claim_per_hour(2), claim_per_day(5), ai_per_hour(10),
+                   publish_per_day(10), publish_per_week(30)
                    —— RLS 全禁，只能经 RPC 读
+publish_drafts     user_id(PK), title, description, custody, contact, location_*, created_at, updated_at
+                   —— 发布草稿：一个用户只有一份（主键保证）
+publish_draft_images user_id + upload_id(PK), position —— 草稿里的照片（外键级联）
 ```
 
 已删除：tags / found_item_tags / lost_reports / lost_report_tags / matches / claims / claim_attempts。
@@ -142,7 +156,7 @@ app_config         max_photos(3), page_size(20), claim_per_hour(2), claim_per_da
 
 | RPC                                         | 调用方         | 作用                                                                                                            |
 | ------------------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------- |
-| `publish_found_item(...)`                   | authenticated  | 一次事务建物品与照片；照片按 `p_upload_ids` 校验归属（别人的 → 42501、不存在 → P0002、重复引用/已用过都被拒）；**in_place 必须有位置详情** |
+| `publish_found_item(...)`                   | authenticated  | 一次事务建物品与照片；照片按 `p_upload_ids` 校验归属（别人的 → 42501、不存在 → P0002、重复引用/已用过都被拒）；**in_place 必须有位置详情**；**限流 24h/10 条、7 天/30 条**（按 owner 统计最近创建的条目，撤单的也计入） |
 | `withdraw_found_item(p_item_id)`            | 物品 owner     | 撤单；**仅 status=published 时允许**（已认领 → P0001）                                                          |
 | `create_pickup(p_item_id)`                  | authenticated  | 实名认领：姓名/手机号**从 profiles 取**；成功即置 claimed；允许多人认领；已撤单 → P0001；拾主认领自己的 → 42501；本人重复提交为更新；**限流 1h/2 次、24h/5 次**（重复提交不计数） |
 | `reveal_found_item_contact(p_item_id)`      | 拾主或已认领者 | 返回联系方式或位置                                                                                              |

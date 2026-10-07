@@ -8,10 +8,13 @@
 // 它的照片全在用户名下、并且有明确的活动时间（updated_at）。按「多久没动过」
 // 整体回收即可，不需要去猜哪张对象是孤儿、也不用扫全桶。
 //
+// 线上由 Vercel Cron 每天调 /api/cron/prune-drafts 自动跑（见 vercel.json），
+// 口径与本脚本一致：**默认 30 天没动过**（lib/db/prune-drafts.ts 的 DRAFT_TTL_DAYS）。
+//
 // 用法：
 //   pnpm db:prune-drafts                     # 默认 dry-run：只列出来
-//   pnpm db:prune-drafts --apply             # 真的删（默认 7 天）
-//   pnpm db:prune-drafts --apply --days=30
+//   pnpm db:prune-drafts --apply             # 真的删（默认 30 天）
+//   pnpm db:prune-drafts --apply --days=7
 import { config } from "dotenv"
 import { createClient } from "@supabase/supabase-js"
 
@@ -21,7 +24,7 @@ config({ path: ".env", quiet: true })
 const args = process.argv.slice(2)
 const apply = args.includes("--apply")
 const daysArg = args.find((arg) => arg.startsWith("--days="))
-const days = Number(daysArg ? daysArg.split("=")[1] : 7)
+const days = Number(daysArg ? daysArg.split("=")[1] : 30)
 
 if (!Number.isFinite(days) || days < 1) {
   console.error("--days 必须是 ≥1 的数字")

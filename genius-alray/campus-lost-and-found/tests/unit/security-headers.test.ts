@@ -56,6 +56,22 @@ describe("next.config 安全响应头", () => {
     }
   })
 
+  it("CSP 放行 Turnstile（登录/注册的人机校验是跨源脚本 + 跨源 iframe）", async () => {
+    const rule = (await headerRules()).find((item) => item.source === "/:path*")
+    const csp = valueOf(rule!, "Content-Security-Policy") ?? ""
+    const origin = "https://challenges.cloudflare.com"
+    expect(csp).toContain("script-src 'self' 'unsafe-inline' " + origin)
+    expect(csp).toContain("frame-src 'self' " + origin)
+  })
+
+  it("HSTS 不带 includeSubDomains（该域名下的其他子域不归我们管）", async () => {
+    const rule = (await headerRules()).find((item) => item.source === "/:path*")
+    const hsts = valueOf(rule!, "Strict-Transport-Security")
+    // 非 dev 环境才下发；测试环境 NODE_ENV=test，因此这里一定有值
+    expect(hsts).toContain("max-age=63072000")
+    expect(hsts).not.toContain("includeSubDomains")
+  })
+
   it("sw.js 的缓存头没有被安全头挤掉（否则永远更新不到新版本）", async () => {
     const rule = (await headerRules()).find((item) => item.source === "/sw.js")
     expect(rule).toBeDefined()

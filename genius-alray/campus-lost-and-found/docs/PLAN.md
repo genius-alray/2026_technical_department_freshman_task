@@ -23,6 +23,7 @@
 | 11   | **PWA**：`app/manifest.ts` + 图标（192/512/maskable）+ Service Worker 离线页；高德链接改为手机端可接管的 `uri.amap.com`（`callnative=1`）并同标签跳转 |
 | 12   | PWA 收尾：路由切换时顶部状态栏不再闪白（镜像 theme-color、兜底色改品牌色）；「查看定位」改为**一步唤起高德 App**（scheme / intent + 网页版兜底） |
 | 13   | 体验补强：**拦截浏览器安装提示** + 首页头像旁「安装应用」按钮；失物墙首屏骨架（限定在 `(wall)` 路由组）；瀑布流与详情页图片统一三态（骨架 / 淡入 / 失败占位，不再露破图） |
+| 14   | **上线加固**：发布限流（24 小时 10 条 / 7 天 30 条，RPC 内强制）；注册登录接入 Cloudflare Turnstile；草稿回收上调度（`vercel.json` + `/api/cron/prune-drafts`）；部署前哨（`lib/deploy-env.ts`：缺变量 / 生产仍用 mock AI → 构建失败）；HSTS 去掉 `includeSubDomains` |
 
 安全模型的一处关键改判：早先要求「禁止获取全部物品列表」，现改为**公开的失物墙**，
 防护重心从「行级不可见」转为「**列级保密**」（`contact` / `location_*` 列级 REVOKE），见 REQUIREMENTS 第 4 节。
@@ -48,7 +49,8 @@
       me/                           我的（头像/姓名/手机号 + 我的发布 / 我的认领）
       me/profile/                   我的信息（真实姓名 + 手机号）
       me/items/[id]/pickups/        拾主查看认领人名单
-      api/upload/route.ts           唯一 REST endpoint
+      api/upload/route.ts           唯一对外的 REST endpoint（图片上传）
+      api/cron/prune-drafts/        Vercel Cron：回收被放弃的发布草稿（CRON_SECRET 鉴权，失败关闭）
       manifest.ts                   PWA 清单（Next 约定文件 → /manifest.webmanifest）
       offline/                      离线回退页（Service Worker 预缓存，免登录可达）
       terms/, privacy/              服务条款 / 隐私政策
@@ -58,6 +60,8 @@
     lib/
       types.ts                      类型与 AI 接口（Lead 冻结）
       env.ts                        zod 校验环境变量 + phoneToEmail（手机号 ↔ 内部邮箱）
+      deploy-env.ts                 构建期部署前哨（缺变量 / 生产仍用 mock AI → 让构建失败）
+      db/prune-drafts.ts            草稿回收（cron 路由与本地脚本共用同一口径）
       validation/schemas.ts         zod schema
       geo.ts                        WGS84 → GCJ-02 + 高德 URL
       db/{found-items,pickups,profiles,types}.ts
@@ -69,13 +73,15 @@
       nav/title-bar.tsx                         全站唯一的标题栏（含「安装应用」与首页右上角「我的」入口）
       media/skeleton-image.tsx                  带骨架屏的图片（全站图片统一用它）
       contact/{phone-link,location-link}.tsx    电话 / 位置（蓝色 + 二次确认，必须复用）
+      auth/turnstile-widget.tsx                 人机校验（sitekey 为空则整块不渲染）
       claim/release-claim.tsx                   撤回认领（共享件）
       pwa/service-worker-register.tsx           注册 Service Worker（仅生产构建）
       pwa/status-bar-keeper.tsx                 镜像状态栏 meta，防止路由切换时闪白
       pwa/install-prompt.tsx                    拦截浏览器安装提示 + 首页「安装应用」按钮
       ui/**                                     shadcn 组件
-    supabase/migrations/            7 个迁移（extensions / core / rls_and_grants / rpcs / storage / uploads_and_limits / publish_draft）
-    tests/{unit,rls,e2e,live,helpers}/
+    supabase/migrations/            8 个迁移（extensions / core / rls_and_grants / rpcs / storage / uploads_and_limits / publish_draft / publish_limits）
+    tests/{unit,component,rls,e2e,live,helpers}/
+    vercel.json                     定时任务（每天 03:00 回收草稿）
 
 ### 1.3 数据访问纪律
 
@@ -111,8 +117,8 @@
 | 层          | 命令             | 覆盖                                                                     |
 | ----------- | ---------------- | ------------------------------------------------------------------------ |
 | 单元 + 组件 | `pnpm test:unit` | mock 确定性、zod schema、错误码映射、源码纪律                            |
-| 安全矩阵    | `pnpm test:rls`  | 列级保密、写权限只走 RPC、认领可见性与多人认领、发布校验（13 条见 VERIFICATION §2） |
-| E2E         | `pnpm test:e2e`  | 13 个按功能划分的 spec：发布向导 / 认领 / 多人认领 / 撤单与撤回 / 我的 / 列级隐私 / 失物墙 / 相册 / reduced-motion / 标题栏 / PWA 外壳 / 骨架屏 / 发布草稿；跑的是 `pnpm build && pnpm start` 的产物 |
+| 安全矩阵    | `pnpm test:rls`  | 列级保密、写权限只走 RPC、认领可见性与多人认领、发布校验、限流、草稿回收（17 条见 VERIFICATION §2） |
+| E2E         | `pnpm test:e2e`  | 13 个按功能划分的 spec：发布向导 / 认领 / 多人认领 / 撤单与撤回 / 我的 / 列级隐私 / 失物墙 / 相册 / reduced-motion / 标题栏 / PWA 外壳 / 骨架屏 / 发布草稿；跑的是 `pnpm build && pnpm start` 的产物；测试环境 `NEXT_PUBLIC_TURNSTILE_SITE_KEY` 为空 → 不渲染人机校验、不依赖外网 |
 | 真机 AI     | `pnpm test:live` | DeepSeek `deepseek-flash` 的拍照识别可用（默认跳过，需 AI_PROVIDER=ai-sdk） |
 | 全量        | `pnpm verify`    | 以上除 live 之外的全部                                                   |
 
@@ -179,6 +185,20 @@
   **任何状态都不出现浏览器破图与 alt 文本**。
 - 骨架的 `loading.tsx` 必须挂在 `(wall)` 路由组里：放根目录会包住所有子路由，
   详情页的 `notFound()` 会因流式响应已发出 200 而退化成 200（E2E 抓到过，见 VERIFICATION §4.11）。
+
+第 14 轮追加（上线加固）：
+
+- **发布限流**放在 RPC 内而不是 Server Action：阈值在 `app_config`（唯一真源），
+  直连 PostgREST 也绕不过；统计口径是「最近创建的条目」，**撤单的也算**
+  （否则发完就撤是免费通道）。测试用「种入 N 天前的历史条目」构造阈值，
+  不去改全局 `app_config`（vitest 并行跑文件，改单行配置会互相污染）。
+- **人机校验**做成「sitekey 为空则整块消失」：本地与全部自动化测试都不渲染、不注入
+  Cloudflare 脚本，线上配了 sitekey 才出现。重置逻辑由 `useActionState` 的 state
+  引用变化驱动（一次性令牌被消费后自动换一张），不用 effect + setState 维护计数器。
+- **部署前哨**独立成 `lib/deploy-env.ts`：`next.config.ts` 里那段逻辑没法被单测调用，
+  而它恰恰是「只有上线时才第一次生效」的规则，所以拆出来直接测。
+- **草稿回收**从「本地脚本」升级为「cron 路由 + 本地脚本同一口径」，
+  对象先删、登记行后删，任何一份草稿失败都只跳过它自己。
 
 第 11–12 轮追加（PWA / 手机端）：
 

@@ -21,9 +21,22 @@ const ERROR_MESSAGES: Array<[RegExp, string]> = [
   ],
   [/invalid login credentials/i, "手机号或密码不正确"],
   [/password should be at least|password is too short/i, "密码至少 6 位"],
+  // Supabase 开启 CAPTCHA 保护后，缺 token / token 过期都会走到这里
+  [/captcha|turnstile/i, "人机校验未通过，请重新完成校验后再试"],
   [/duplicate key|profiles_phone/i, "该手机号已注册，请直接登录"],
   [/注册需要真实姓名与手机号/, "注册需要真实姓名与手机号"],
 ]
+
+/**
+ * 取出 Turnstile 令牌。
+ * 没配 sitekey 时（本地开发、自动化测试）表单里根本没有这个字段，返回 undefined ——
+ * 不能传空串：Supabase 会把空字符串当成一个「无效令牌」直接拒绝。
+ */
+function readCaptchaToken(formData: FormData): string | undefined {
+  const raw = formData.get("captchaToken")
+  const token = typeof raw === "string" ? raw.trim() : ""
+  return token.length > 0 ? token : undefined
+}
 
 function translateAuthError(message: string): string {
   for (const [pattern, text] of ERROR_MESSAGES) {
@@ -53,6 +66,7 @@ export async function signUp(
   }
 
   const nextPath = safeNextPath(formData.get("next"))
+  const captchaToken = readCaptchaToken(formData)
   const supabase = await createClient()
 
   let formError: string | undefined
@@ -62,6 +76,7 @@ export async function signUp(
       password: parsed.data.password,
       options: {
         data: { real_name: parsed.data.realName, phone: parsed.data.phone },
+        captchaToken,
       },
     })
     if (error) {
@@ -91,6 +106,7 @@ export async function signIn(
   }
 
   const nextPath = safeNextPath(formData.get("next"))
+  const captchaToken = readCaptchaToken(formData)
   const supabase = await createClient()
 
   let formError: string | undefined
@@ -98,6 +114,7 @@ export async function signIn(
     const { error } = await supabase.auth.signInWithPassword({
       email: phoneToEmail(parsed.data.phone),
       password: parsed.data.password,
+      options: { captchaToken },
     })
     if (error) formError = translateAuthError(error.message)
   } catch (error) {

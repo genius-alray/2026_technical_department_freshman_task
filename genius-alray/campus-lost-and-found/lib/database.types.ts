@@ -35,6 +35,8 @@ export type Database = {
           id: boolean
           max_photos: number
           page_size: number
+          publish_per_day: number
+          publish_per_week: number
           updated_at: string
         }
         Insert: {
@@ -44,6 +46,8 @@ export type Database = {
           id?: boolean
           max_photos?: number
           page_size?: number
+          publish_per_day?: number
+          publish_per_week?: number
           updated_at?: string
         }
         Update: {
@@ -53,6 +57,8 @@ export type Database = {
           id?: boolean
           max_photos?: number
           page_size?: number
+          publish_per_day?: number
+          publish_per_week?: number
           updated_at?: string
         }
         Relationships: []

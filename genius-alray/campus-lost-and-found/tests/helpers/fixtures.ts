@@ -179,13 +179,17 @@ export type AppConfig = {
   claim_per_hour: number
   claim_per_day: number
   ai_per_hour: number
+  publish_per_day: number
+  publish_per_week: number
 }
 
 export async function readAppConfig(): Promise<AppConfig> {
   const admin = createAdminClient()
   const result = await admin
     .from("app_config")
-    .select("max_photos, page_size, claim_per_hour, claim_per_day, ai_per_hour")
+    .select(
+      "max_photos, page_size, claim_per_hour, claim_per_day, ai_per_hour, publish_per_day, publish_per_week"
+    )
     .single()
   if (result.error || !result.data) {
     throw new Error(
@@ -353,4 +357,26 @@ export function withdrawItemRaw(
   return owner.client.rpc("withdraw_found_item", {
     p_item_id: itemId,
   }) as unknown as PromiseLike<RpcResult<string>>
+}
+
+/** 用 service_role 直接种入历史条目（构造「今天/本周已经发过 N 条」的等价状态） */
+export async function seedPublishedItems(
+  ownerId: string,
+  count: number,
+  createdAt: string
+): Promise<void> {
+  const admin = createAdminClient()
+  const rows = Array.from({ length: count }, (_, index) => ({
+    owner_id: ownerId,
+    title: "历史条目 " + index,
+    description: DEFAULT_DESCRIPTION,
+    custody: "in_place" as const,
+    location_label: "测试点位",
+    status: "published" as const,
+    created_at: createdAt,
+  }))
+  const result = await admin.from("found_items").insert(rows)
+  if (result.error) {
+    throw new Error("种入历史条目失败：" + result.error.message)
+  }
 }

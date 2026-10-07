@@ -2,7 +2,9 @@
 
 import { useActionState, useEffect, useState } from "react"
 import Link from "next/link"
+import { TurnstileWidget } from "@/components/auth/turnstile-widget"
 import { toast } from "@/components/ui/toast"
+import { publicEnv } from "@/lib/public-env"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -28,6 +30,9 @@ export function SignUpForm({ nextPath }: { nextPath: string }) {
   const [phone, setPhone] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
+  // 没配 sitekey 时（本地/测试）整块人机校验都不存在，表单也不该被它挡住
+  const captchaEnabled = publicEnv.turnstileSiteKey !== ""
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
 
   useEffect(() => {
     if (state.formError) toast.add({ type: "error", title: state.formError })
@@ -143,11 +148,19 @@ export function SignUpForm({ nextPath }: { nextPath: string }) {
         </p>
       ) : null}
 
+      {captchaEnabled ? (
+        <>
+          {/* state 每次动作结束都是新引用 → 令牌被消费掉后自动换一张 */}
+          <TurnstileWidget onToken={setCaptchaToken} resetSignal={state} />
+          <input type="hidden" name="captchaToken" value={captchaToken ?? ""} />
+        </>
+      ) : null}
+
       <Button
         type="submit"
         size="lg"
         className="h-12 w-full text-base"
-        disabled={pending}
+        disabled={pending || (captchaEnabled && captchaToken === null)}
       >
         {pending ? "注册中…" : "注册并登录"}
       </Button>
