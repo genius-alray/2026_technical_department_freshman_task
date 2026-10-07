@@ -34,7 +34,8 @@
 
 ### 1.1 写操作一律用 Server Actions
 
-- 唯一 REST endpoint 是图片上传 `POST /api/upload`（Server Action 请求体上限 1MB，图片字节必须绕开）。
+- 对外只有两个 REST endpoint：图片上传 `POST /api/upload`（Server Action 请求体上限 1MB，图片字节必须绕开）
+  与定时任务 `GET /api/cron/prune-drafts`（`CRON_SECRET` 鉴权，缺失即 401）。
 - 每个 action 都视为不可信入口：先 `getCurrentUser()` 鉴权，再用 zod 校验。
 - 三个业务表对客户端**只有 SELECT 权限**，所有写入都经 SECURITY DEFINER RPC。
 
@@ -42,14 +43,14 @@
 
     app/
       (auth)/login, signup          手机号登录 / 注册（姓名 + 手机号 + 同意条款）
-      (wall)/page.tsx, loading.tsx  失物墙（公开双列瀑布流 + 首屏骨架；骨架限定在这一组，见 VERIFICATION §4.11）
+      (wall)/page.tsx, loading.tsx  失物墙（公开双列瀑布流 + 首屏骨架；骨架限定在这一组，见 VERIFICATION §4.10）
       publish/                      发布招领（四屏：拍照 → 确认信息 → 怎么还 → 详细设置）
       items/[id]/                   物品详情（相册轮播 + 认领入口）
       items/[id]/claim/             认领信息（指引 + 拾主联系方式/位置）
       me/                           我的（头像/姓名/手机号 + 我的发布 / 我的认领）
       me/profile/                   我的信息（真实姓名 + 手机号）
       me/items/[id]/pickups/        拾主查看认领人名单
-      api/upload/route.ts           唯一对外的 REST endpoint（图片上传）
+      api/upload/route.ts           图片上传（REST endpoint）
       api/cron/prune-drafts/        Vercel Cron：回收被放弃的发布草稿（CRON_SECRET 鉴权，失败关闭）
       manifest.ts                   PWA 清单（Next 约定文件 → /manifest.webmanifest）
       offline/                      离线回退页（Service Worker 预缓存，免登录可达）
@@ -62,9 +63,10 @@
       env.ts                        zod 校验环境变量 + phoneToEmail（手机号 ↔ 内部邮箱）
       deploy-env.ts                 构建期部署前哨（缺变量 / 生产仍用 mock AI → 让构建失败）
       db/prune-drafts.ts            草稿回收（cron 路由与本地脚本共用同一口径）
+      auth/login-phone.ts           改手机号时同步 auth 邮箱（Admin API）
       validation/schemas.ts         zod schema
       geo.ts                        WGS84 → GCJ-02 + 高德 URL
-      db/{found-items,pickups,profiles,types}.ts
+      db/{found-items,pickups,profiles,uploads,ai-usage,drafts,types}.ts
       ai/{index,mock,ai-sdk}.ts     vision.analyze + vision.review
       storage/{signed,validate}.ts
       supabase/{client,server,admin}.ts
@@ -78,8 +80,9 @@
       pwa/service-worker-register.tsx           注册 Service Worker（仅生产构建）
       pwa/status-bar-keeper.tsx                 镜像状态栏 meta，防止路由切换时闪白
       pwa/install-prompt.tsx                    拦截浏览器安装提示 + 首页「安装应用」按钮
+      theme-provider.tsx                        主题 Provider（深浅色）
       ui/**                                     shadcn 组件
-    supabase/migrations/            8 个迁移（extensions / core / rls_and_grants / rpcs / storage / uploads_and_limits / publish_draft / publish_limits）
+    supabase/migrations/            10 个迁移（extensions / core / rls_and_grants / rpcs / storage / uploads_and_limits / publish_draft / publish_limits / explicit_grants / release_claim_guard）
     tests/{unit,component,rls,e2e,live,helpers}/
     vercel.json                     定时任务（每天 03:00 回收草稿）
 
@@ -117,14 +120,14 @@
 | 层          | 命令             | 覆盖                                                                     |
 | ----------- | ---------------- | ------------------------------------------------------------------------ |
 | 单元 + 组件 | `pnpm test:unit` | mock 确定性、zod schema、错误码映射、源码纪律                            |
-| 安全矩阵    | `pnpm test:rls`  | 列级保密、写权限只走 RPC、认领可见性与多人认领、发布校验、限流、草稿回收（17 条见 VERIFICATION §2） |
+| 安全矩阵    | `pnpm test:rls`  | 列级保密、写权限只走 RPC、认领可见性与多人认领、发布校验、限流、草稿回收（18 条见 VERIFICATION §2） |
 | E2E         | `pnpm test:e2e`  | 13 个按功能划分的 spec：发布向导 / 认领 / 多人认领 / 撤单与撤回 / 我的 / 列级隐私 / 失物墙 / 相册 / reduced-motion / 标题栏 / PWA 外壳 / 骨架屏 / 发布草稿；跑的是 `pnpm build && pnpm start` 的产物；测试环境 `NEXT_PUBLIC_TURNSTILE_SITE_KEY` 为空 → 不渲染人机校验、不依赖外网 |
 | 真机 AI     | `pnpm test:live` | DeepSeek `deepseek-flash` 的拍照识别可用（默认跳过，需 AI_PROVIDER=ai-sdk） |
 | 全量        | `pnpm verify`    | 以上除 live 之外的全部                                                   |
 
 ### 安全测试矩阵
 
-完整矩阵（13 条，含行级/列级/写入/存储/源码纪律）见 [`docs/VERIFICATION.md`](./VERIFICATION.md) §2；这里不重复，
+完整矩阵（18 条，含行级/列级/写入/存储/源码纪律）见 [`docs/VERIFICATION.md`](./VERIFICATION.md) §2；这里不重复，
 避免两份清单随实现漂移。刷新矩阵时改 VERIFICATION 一处。
 
 ---
@@ -171,7 +174,7 @@
 ## 6. 完成定义
 
 - `pnpm verify` 全绿（typecheck + lint + unit + rls + e2e）。
-- 安全测试矩阵（VERIFICATION §2，13 条）全部通过。
+- 安全测试矩阵（VERIFICATION §2，18 条）全部通过。
 - `pnpm test:live` 通过（真实 DeepSeek 模型）。
 - 独立验证 agent 报告无阻塞项，且明确区分产品缺陷与测试自身缺陷。
 - 人类以真实照片完整走查一遍发布 → 浏览 → 认领 → 撤单。
@@ -184,7 +187,7 @@
   瀑布流与详情页图片统一走 `SkeletonImage`：加载中骨架、加载完淡入、失败换成图标 + 一句话，
   **任何状态都不出现浏览器破图与 alt 文本**。
 - 骨架的 `loading.tsx` 必须挂在 `(wall)` 路由组里：放根目录会包住所有子路由，
-  详情页的 `notFound()` 会因流式响应已发出 200 而退化成 200（E2E 抓到过，见 VERIFICATION §4.11）。
+  详情页的 `notFound()` 会因流式响应已发出 200 而退化成 200（E2E 抓到过，见 VERIFICATION §4.10）。
 
 第 14 轮追加（上线加固）：
 

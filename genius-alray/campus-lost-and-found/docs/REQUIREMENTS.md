@@ -2,7 +2,7 @@
 
 > 本文件是当前唯一有效的需求契约。技术栈：Next.js 16.3.6 + React 19 + Tailwind v4 + shadcn v4（Base UI）+ Supabase（本地 podman）。
 > 本轮做了大幅简化：**取消答题验证、人工审核、标签体系、寻物启事与相似度匹配**。
-> 第 14 轮补回了两件事：**发布草稿**（单例，见 3.2）与**上线加固**（发布限流、人机校验、部署前哨）。
+> 第 10 轮补回了**发布草稿**（单例，见 3.1）；第 14 轮做了**上线加固**（发布限流、人机校验、部署前哨）。
 
 ---
 
@@ -53,7 +53,7 @@
 - 照片在上传成功那一刻就挂到草稿上；**从草稿移除照片会连存储对象一起删掉**（以前会留桶内孤儿）；
 - 文案在每次离开一步时整份覆盖保存；**草稿里已有内容时不再自动跑 AI**，AI 也只补空字段、不覆盖用户写的东西；
 - 发布成功后草稿即被清空（用完即弃）；
-- 被放弃的草稿由 `pnpm db:prune-drafts`（默认 dry-run，7 天）整体回收 —— 草稿是**有边界的清理单位**。
+- 被放弃的草稿由 `pnpm db:prune-drafts`（默认 dry-run，30 天）整体回收 —— 草稿是**有边界的清理单位**。
 
 ### 3.2 失物墙（公开浏览）
 
@@ -125,7 +125,7 @@ published ──(第一个认领人提交)──> claimed    （仍在墙上，�
 | 行级（RLS） | **未登录（anon）也能读失物墙**：可读 `status <> 'withdrawn'` 的全部物品（含已认领）；登录用户额外可读自己名下的已撤单物品                                          |
 | **列级**    | `contact / location_lat / location_lng / location_label` 对 `anon` 与 `authenticated` **REVOKE SELECT**，客户端任何查询碰这些列都直接 42501（包括星号 select） |
 | 写入        | 三张业务表对客户端**只有 SELECT**，没有任何写权限；所有写入必须经 SECURITY DEFINER RPC                                                                         |
-| 揭晓        | `reveal_found_item_contact` 仅**拾主本人**或**已提交认领记录的人**可调用                                                                                       |
+| 揭晓        | `reveal_found_item_contact` 仅**拾主本人**或**仍在认领的人**（`released_at is null`）可调用                                                                     |
 | 认领人信息  | `pickups` 的可见性为**拾主 + 认领人本人**（RLS）                                                                                                               |
 | 图片        | 私有桶，无任何客户端读写策略；上传走 `/api/upload`（service_role），读取由服务端签发 1 小时签名 URL                                                            |
 | **上传归属** | `image_uploads` 登记表：客户端只拿到不透明 `uploadId`，**存储路径与归属判定都留在服务端**；发布按 id 校验（引用他人 → 42501），不再有「路径前缀」这类比较 |
@@ -166,11 +166,14 @@ publish_draft_images user_id + upload_id(PK), position —— 草稿里的照片
 | `publish_found_item(...)`                   | authenticated  | 一次事务建物品与照片；照片按 `p_upload_ids` 校验归属（别人的 → 42501、不存在 → P0002、重复引用/已用过都被拒）；**in_place 必须有位置详情**；**限流 24h/10 条、7 天/30 条**（按 owner 统计最近创建的条目，撤单的也计入） |
 | `withdraw_found_item(p_item_id)`            | 物品 owner     | 撤单；**仅 status=published 时允许**（已认领 → P0001）                                                          |
 | `create_pickup(p_item_id)`                  | authenticated  | 实名认领：姓名/手机号**从 profiles 取**；成功即置 claimed；允许多人认领；已撤单 → P0001；拾主认领自己的 → 42501；本人重复提交为更新；**限流 1h/2 次、24h/5 次**（重复提交不计数） |
-| `reveal_found_item_contact(p_item_id)`      | 拾主或已认领者 | 返回联系方式或位置                                                                                              |
+| `reveal_found_item_contact(p_item_id)`      | 拾主或仍在认领的人 | 返回联系方式或位置（撤回过的人不再放行）                                                                     |
 | `release_found_item_claim(p_item_id)`       | 认领人本人     | 撤回认领：只把自己标记为已撤回（`released_at`），**记录保留**；还有人认领 → 物品保持 claimed，最后一个活跃认领撤回才回到 published |
-| `list_found_item_claimers(p_item_id)`       | 拾主或已认领者 | 列出该物品的**全部认领人**，用于多人认领时互相联系                                                              |
+| `list_found_item_claimers(p_item_id)`       | 拾主或仍在认领的人 | 列出该物品**仍在认领**的人（撤回过的不再出现），用于多人认领时互相联系                                        |
 | `get_app_config()`                          | anon + 登录    | 返回 max_photos / page_size                                                                                     |
 | `consume_ai_quota()`                        | 登录用户       | 消耗一次 AI 配额，返回 (allowed, used, limit)；超限返回 allowed=false，调用方跳过 AI 并提示 |
+| `save_publish_draft(...)`                   | authenticated  | 保存草稿：每次提交**完整快照**整体覆盖（避免「没传的字段被清空」歧义）；每个用户只有一份（`publish_drafts.user_id` 主键） |
+| `attach_draft_photo(p_upload_id)`           | authenticated  | 上传成功后由 `/api/upload` 立刻调用：把照片挂到草稿上（张数受 `max_photos` 限制） |
+| `detach_draft_photo(p_upload_id)`           | authenticated  | 从草稿移除照片：删登记行并把**存储路径交回服务端**去删对象（不留桶内孤儿） |
 
 > **实现约定**：RETURNS TABLE 的 OUT 参数一律加 `out_` 前缀。本项目已因 OUT 参数与列名撞名踩过两次
 > 42702（`record_claim_attempt` 的 `status`、`upsert_tags` 的 `aspect`），务必保持该约定。
@@ -215,8 +218,8 @@ publish_draft_images user_id + upload_id(PK), position —— 草稿里的照片
 | 3   | 寻物方需先发寻物启事才能匹配到招领启事  | **取消寻物启事与匹配**；改为公开的失物墙直接浏览                                                    |
 | 4   | 首页只有两张卡片                        | 首页即双列瀑布流失物墙，发布入口在墙内                                                              |
 | 5   | 未提及                                  | 增加实名认领与「我的」页；认领人信息供拾主核对与平台审计                                            |
-| 7   | 未提及                                  | 第 4 轮：认领无需审核，提交即把物品标记为「已认领」；已认领仍留在墙上带标签；拾主只能在被认领前撤单 |
-| 6   | 未提及                                  | 曾要求「禁止获取全部物品列表」，后按用户改判为公开浏览；防护重心转为列级保密                        |
+| 6   | 未提及                                  | 第 4 轮：认领无需审核，提交即把物品标记为「已认领」；已认领仍留在墙上带标签；拾主只能在被认领前撤单 |
+| 7   | 未提及                                  | 曾要求「禁止获取全部物品列表」，后按用户改判为公开浏览；防护重心转为列级保密                        |
 
 ---
 

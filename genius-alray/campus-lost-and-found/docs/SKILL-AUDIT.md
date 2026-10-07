@@ -26,7 +26,7 @@ toast.add({ title: "Changes saved." })
 
 - 新增 `components/ui/toast.tsx`（Base UI 原生，依赖仅 `cn` + `@base-ui/react`）
 - 删除 sonner 依赖与对应包装组件
-- 调用统一改写为 `toast.add({ type, title })`（当前 21 处）；`app/layout.tsx` 中 `<Toaster>` 改为 Provider 包裹整棵树
+- 调用统一改写为 `toast.add({ type, title })`（当前 25 处）；`app/layout.tsx` 中 `<Toaster>` 改为 Provider 包裹整棵树
 - 已在真实浏览器验证：错误密码登录弹出错误 toast（现文案「手机号或密码不正确」，见 `app/(auth)/actions.ts`），`toast-viewport` 正常挂载，无 page error
 
 ---

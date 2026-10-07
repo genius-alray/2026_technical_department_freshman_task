@@ -1,6 +1,6 @@
 # 校园失物招领
 
-手机端优先的校园失物招领站：拍照发布拾到的物品、在公开失物墙上浏览、认领时留下联系方式。
+手机端优先的校园失物招领站：拍照发布拾到的物品、在公开失物墙上浏览、认领时以账号里的实名信息登记。
 匿名可看失物墙，发布与认领需要登录（手机号 + 密码 + 人机校验）。
 
 技术栈：Next.js 16（App Router / Server Actions）、React 19、TypeScript、Supabase（Postgres / Auth / Storage）、
@@ -128,7 +128,7 @@ Supabase 项目，并开启 Deployment Protection。构建时对此会打警告�
 
     app/         页面与 Server Actions：(auth) 登录注册、(wall) 失物墙、publish、items、me、api/upload、api/cron
     components/  nav 标题栏、motion 动效、auth 人机校验、contact 电话/位置、claim、media、pwa、ui（shadcn）
-    lib/         db 数据访问、ai 提供方、supabase 客户端、storage、validation zod schema、geo、env、deploy-env
+    lib/         db 数据访问、ai 提供方、supabase 客户端、storage、validation zod schema、geo、env、deploy-env、auth（手机号↔登录邮箱同步）
     supabase/    migrations（10 个）与本地配置
     tests/       unit、component、rls、e2e、live
     docs/        需求、计划、UI 规范、验证记录、技能审计

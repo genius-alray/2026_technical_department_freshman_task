@@ -19,12 +19,15 @@
 > 因此 `tests/rls/14-rate-limits`（新增的发布限流断言）与 `tests/rls/16-prune-drafts`（草稿回收）
 > 必须在有 Supabase 的机器上跑一次 `pnpm test:rls` 才算验证通过 —— 本文档不预支这个结论。
 >
-> **生产库落地记录（2026-10-07）**：8 个迁移已由 `supabase db push` 推到生产项目
+> **生产库落地记录（2026-10-07，快照）**：当时仓库里的 8 个迁移已由 `supabase db push` 推到生产项目
 > （`iehxleycijdqlglnfbby` / Southeast Asia (Singapore) / Postgres 17.11）。
 > 核对方式是 `supabase gen types typescript --linked` 生成远端 schema，再与仓库里的
-> `lib/database.types.ts` 逐行对比：**public schema 零差异** —— 9 张表、8 个函数、
+> `lib/database.types.ts` 逐行对比：**public schema 零差异** —— 9 张表与当时的 RPC 集合全在，
 > `publish_per_day` / `publish_per_week` 两列都在；仅有的差异是 CLI 版本带来的
 > `__InternalSupabase` / `graphql_public` / `Args: never` 写法，与本项目 schema 无关。
+> **此后仓库又新增了 2 个迁移**：`20261007130000_explicit_grants.sql`（其效果已由下一条冒烟验证）
+> 与 `20261007140000_release_claim_guard.sql`（见 §4.27）；**后者尚未推送，生产需要重新
+> `supabase db push` 才会包含本次修复**。
 >
 > **PostgREST 冒烟（已补做，通过）**：网络恢复后直连生产项目验证了客户端身份边界 ——
 > anon 读 `found_items(id)` → 200；读 `contact` → **42501**；读 `app_config` → 42501；
@@ -42,7 +45,7 @@
 | 2   | `contact` / `location_*` **列级 REVOKE**：客户端任何查询（含 `select(*)`）都 42501                       |
 | 3   | 三张业务表对 anon/authenticated **只有 SELECT**，写入一律被拒                                            |
 | 4   | 私有图片桶无客户端策略；只有服务端签名 URL 可读                                                          |
-| 5   | `reveal_found_item_contact`：仅拾主本人或已认领者                                                        |
+| 5   | `reveal_found_item_contact`：仅拾主本人或仍在认领的人（撤回过的不再放行）                                |
 | 6   | `create_pickup`：认领即置 claimed；**允许多人认领**；拾主不能认领自己的；已撤单拒绝；本人重复提交 = 更新 |
 | 7   | `withdraw_found_item`：仅 owner 且 status=published；已认领 → P0001                                      |
 | 8   | `release_found_item_claim`：撤回只摘掉自己；还有人认领时物品保持 claimed，最后一个活跃认领撤回才回到 published；记录保留（`released_at`），可再认领 |

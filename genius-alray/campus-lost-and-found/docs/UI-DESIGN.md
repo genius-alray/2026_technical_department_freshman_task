@@ -72,6 +72,7 @@ Server Component 优先用 CSS 反馈，不要为动效改成客户端组件；�
 改 UI 时同步这份清单；`tests/e2e/**` 优先按它定位元素，少量断言仍会用到文案与结构（如「已认领」角标、标题栏数量）。
 
 - 墙：`publish-entry` `wall-empty` `wall-error` `item-wall` `item-card` `load-more` `wall-no-more`
+  `wall-login-for-more`（匿名没有「加载更多」，改为去登录）
 - 详情：`item-back` `item-owner-notice` `pickup-open` `pickup-view-info` `pickup-claimed` `pickup-withdrawn`
   `gallery-track` `gallery-dot-N` `gallery-counter`
 - 认领：`claim-confirm` `claim-confirm-profile` `claim-confirm-name` `claim-confirm-ok` `claim-confirm-cancel`
@@ -85,6 +86,7 @@ Server Component 优先用 CSS 反馈，不要为动效改成客户端组件；�
   `picker-phone-<pickupId>`
 - 组件/其它：`phone-link` `phone-call-dialog` `phone-call-confirm` `phone-call-cancel` `location-link`
   `map-open-dialog` `map-open-confirm` `map-open-cancel` `title-bar` `me-entry` `browse-without-login`
+  `turnstile`（人机校验容器，sitekey 为空时不渲染）
 - 离线页：`offline-retry`
 - 安装：`install-app` `install-ios-dialog`
 - 骨架 / 图片：`wall-skeleton` `wall-loading-more` `item-cover`（+`-skeleton` / `-error`）
@@ -123,7 +125,7 @@ Server Component 优先用 CSS 反馈，不要为动效改成客户端组件；�
   （正方形轮播位、80px 缩略图），`aspectClassName` 给占位比例（自然模式下加载完即撤掉，
   让图片按真实宽高比撑开，瀑布流才有错落）。
 - 失物墙首屏骨架在 `app/(wall)/loading.tsx` —— **必须挂在路由组里**：放根目录会包住所有子路由，
-  详情页的 `notFound()` 会因流式响应已发出 200 而退化成 200（见 VERIFICATION §4.11）。
+  详情页的 `notFound()` 会因流式响应已发出 200 而退化成 200（见 VERIFICATION §4.10）。
   它是**服务端流式**吐出来的第一段 HTML，覆盖首次进入 / 刷新 / 从桌面图标启动；
   客户端跳转时 Next 会等响应到齐再整屏切换（§5 已知限制）。
   「加载更多」时在瀑布流里补两张 `wall-loading-more` 占位卡，别让用户盯着不动的按钮。
