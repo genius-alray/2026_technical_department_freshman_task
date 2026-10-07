@@ -13,6 +13,8 @@ const BASE = {
   AI_PROVIDER: "ai-sdk",
   AI_API_KEY: "sk-xxx",
   AI_MODEL: "deepseek-flash",
+  // 生产环境的 Cloudflare sitekey（公开值）；留空会触发一条警告，见下面的用例
+  NEXT_PUBLIC_TURNSTILE_SITE_KEY: "1x00000000000000000000AA",
 }
 
 describe("部署环境检查", () => {
@@ -71,6 +73,18 @@ describe("部署环境检查", () => {
       AI_PROVIDER: "mock",
     })
     expect(check.errors).toEqual([])
+  })
+
+  it("生产环境没配 Turnstile sitekey：给警告（Supabase 开了 CAPTCHA 就会全挂）", () => {
+    const check = checkDeployEnv({
+      ...BASE,
+      VERCEL_ENV: "production",
+      NEXT_PUBLIC_TURNSTILE_SITE_KEY: "",
+    })
+    expect(check.errors).toEqual([])
+    expect(check.warnings.join("\n")).toContain(
+      "NEXT_PUBLIC_TURNSTILE_SITE_KEY"
+    )
   })
 
   it("预览部署拿到 service_role 密钥：给警告而不是错误", () => {

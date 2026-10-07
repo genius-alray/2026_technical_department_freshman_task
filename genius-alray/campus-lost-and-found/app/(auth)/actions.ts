@@ -82,7 +82,15 @@ export async function signUp(
     if (error) {
       formError = translateAuthError(error.message)
     } else if (!data.session) {
-      formError = "注册成功但未能自动登录，请直接登录"
+      // 账号是「手机号派生的内部邮箱」，@campus.local 收不到确认信。
+      // 走到这里只有一种可能：云端的 Confirm email 还开着 —— 用户会看到「注册成功」，
+      // 却永远登不进去。这是部署配置问题，不是用户操作问题，所以在日志里指出来，
+      // 别让下一个人从「注册明明成功了」开始猜。
+      console.error(
+        "[auth] signUp 没有返回 session：请到 Supabase 控制台关掉 " +
+          "Authentication → Sign In / Providers → Email → Confirm email"
+      )
+      formError = "注册暂未完成，请联系管理员"
     }
   } catch (error) {
     formError = error instanceof Error ? error.message : "注册失败，请重试"

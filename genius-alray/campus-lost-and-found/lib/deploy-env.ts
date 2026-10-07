@@ -73,6 +73,18 @@ export function checkDeployEnv(
     )
   }
 
+  // Supabase 控制台开了 CAPTCHA protection 而这里没配 sitekey：
+  // 页面上不会渲染挑战，于是注册/登录都拿不到 captchaToken，全部失败。
+  // 这两处配置分别在两个控制台里，最容易只改一半 —— 只警告不阻断：
+  // 也可能确实是「Supabase 根本没开 CAPTCHA」，那就是正常配置。
+  if (env.VERCEL_ENV === "production" && !env.NEXT_PUBLIC_TURNSTILE_SITE_KEY) {
+    warnings.push(
+      "[deploy] 生产环境没有配置 NEXT_PUBLIC_TURNSTILE_SITE_KEY。" +
+        "如果 Supabase 那边开了 CAPTCHA protection，注册与登录会全部失败（前端拿不到 token）；" +
+        "要么配上 sitekey，要么在 Supabase 控制台关掉 CAPTCHA。"
+    )
+  }
+
   // 预览部署默认公开可访问。若它同样拿到了 service_role 密钥，
   // 任何拿到预览链接的人都能对**生产库**注册账号、发布内容。
   if (env.VERCEL_ENV === "preview" && env.SUPABASE_SERVICE_ROLE_KEY) {
